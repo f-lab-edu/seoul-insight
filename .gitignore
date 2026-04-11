@@ -1,1 +1,32 @@
+# Python
 __pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.env
+.env.*
+!.env.example
+dist/
+*.egg-info/
+
+# Java / Spring Boot
+target/
+*.class
+*.jar
+*.war
+.gradle/
+build/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

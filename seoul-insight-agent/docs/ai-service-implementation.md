@@ -5,7 +5,7 @@ FastAPI + LangGraph 기반 멀티에이전트 서비스 구현 순서.
 
 ---
 
-## Phase 1. 프로젝트 뼈대
+## Phase 1. 프로젝트 초기 구성 
 
 - [ ] 디렉토리 구조 생성 (`routers/`, `agents/`, `tools/`, `llm/`, `schemas/`, `middleware/`, `scripts/`)
 - [ ] `main.py` → FastAPI 앱 진입점으로 전환 (`app = FastAPI()`, uvicorn 실행)
@@ -45,7 +45,7 @@ FastAPI + LangGraph 기반 멀티에이전트 서비스 구현 순서.
 
 ---
 
-## Phase 5. LangGraph 워크플로우
+## Phase 5. LangGraph 워크플로우 구축 
 
 - [ ] `agents/graph.py` — 노드 등록 및 엣지 연결
 - [ ] `router_agent` 결과에 따른 조건 분기 (`SEARCH` / `API` / `FALLBACK`)
@@ -77,7 +77,7 @@ FastAPI + LangGraph 기반 멀티에이전트 서비스 구현 순서.
 
 ---
 
-## Phase 9. 미들웨어 / 관측
+## Phase 9. 미들웨어 / 관측가능성 구축
 
 - [ ] `middleware/metrics.py` — 요청별 응답시간 측정
 - [ ] 에이전트별 오류율 로깅
