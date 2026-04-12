@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-app = FastAPI(title="seoul-insight-agent")
+app = FastAPI(title="on-seoul-agent")
 
 
 @app.get("/health")
