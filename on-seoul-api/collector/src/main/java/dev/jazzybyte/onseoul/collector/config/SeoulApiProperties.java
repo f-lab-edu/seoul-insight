@@ -11,6 +11,6 @@ public class SeoulApiProperties {
 
     private String key;
     private String baseUrl = "http://openapi.seoul.go.kr:8088";
-    private int pageSize = 1000;
+    private int pageSize = 200;
     private int maxRetries = 3;
 }
