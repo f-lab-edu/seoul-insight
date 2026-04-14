@@ -1,1 +1,3 @@
 rootProject.name = 'on-seoul-api'
+include 'collector'
+
