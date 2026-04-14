@@ -1,12 +1,14 @@
 package dev.jazzybyte.onseoul.collector;
 
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import dev.jazzybyte.onseoul.collector.config.SeoulApiProperties;
 import dev.jazzybyte.onseoul.collector.dto.PublicServiceRow;
 import dev.jazzybyte.onseoul.collector.dto.SeoulApiResponse;
 import dev.jazzybyte.onseoul.collector.exception.SeoulApiException;
 import dev.jazzybyte.onseoul.collector.exception.SeoulApiServerException;
+import dev.jazzybyte.onseoul.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -26,6 +28,7 @@ public class SeoulOpenApiClient {
     private final ObjectMapper objectMapper;
     private final Retry retrySpec;
 
+    @Autowired
     public SeoulOpenApiClient(WebClient seoulWebClient,
                               SeoulApiProperties properties,
                               ObjectMapper objectMapper) {
@@ -84,7 +87,8 @@ public class SeoulOpenApiClient {
                                   new SeoulApiServerException("서울 API 서버 오류: " + resp.statusCode())))
                 .onStatus(status -> status.is4xxClientError(),
                           resp -> Mono.error(
-                                  new SeoulApiException("서울 API 클라이언트 오류: " + resp.statusCode())))
+                                  new SeoulApiException(ErrorCode.COLLECT_API_CLIENT_ERROR,
+                                                        "서울 API 클라이언트 오류: " + resp.statusCode())))
                 .bodyToMono(String.class)
                 .map(body -> parseResponse(body, serviceName))
                 .retryWhen(retrySpec)
@@ -92,16 +96,25 @@ public class SeoulOpenApiClient {
     }
 
     private SeoulApiResponse parseResponse(String body, String serviceName) {
-        JsonNode root = objectMapper.readTree(body);
-        JsonNode inner = root.get(serviceName);
-        if (inner == null || inner.isNull()) {
-            throw new SeoulApiException("API 응답에서 서비스 키를 찾을 수 없음: " + serviceName);
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode inner = root.get(serviceName);
+            if (inner == null || inner.isNull()) {
+                throw new SeoulApiException(ErrorCode.COLLECT_API_PARSE_ERROR,
+                                            "API 응답에서 서비스 키를 찾을 수 없음: " + serviceName);
+            }
+            SeoulApiResponse response = objectMapper.treeToValue(inner, SeoulApiResponse.class);
+            if (!response.isSuccess()) {
+                throw new SeoulApiException(ErrorCode.COLLECT_API_CLIENT_ERROR,
+                                            "API 오류 코드: " + response.getResult().getCode()
+                                            + " / " + response.getResult().getMessage());
+            }
+            return response;
+        } catch (SeoulApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new SeoulApiException(ErrorCode.COLLECT_API_PARSE_ERROR,
+                                        "API 응답 파싱 실패: " + e.getMessage(), e);
         }
-        SeoulApiResponse response = objectMapper.treeToValue(inner, SeoulApiResponse.class);
-        if (!response.isSuccess()) {
-            throw new SeoulApiException("API 오류 코드: " + response.getResult().getCode()
-                                        + " / " + response.getResult().getMessage());
-        }
-        return response;
     }
 }

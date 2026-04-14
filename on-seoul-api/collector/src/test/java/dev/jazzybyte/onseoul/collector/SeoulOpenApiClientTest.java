@@ -1,6 +1,6 @@
 package dev.jazzybyte.onseoul.collector;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.jazzybyte.onseoul.collector.config.SeoulApiProperties;
 import dev.jazzybyte.onseoul.collector.dto.PublicServiceRow;
 import dev.jazzybyte.onseoul.collector.dto.SeoulApiResponse;
