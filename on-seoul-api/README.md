@@ -63,7 +63,7 @@ domain    → common
 
 - **common**: 프레임워크 의존성 없는 공통 유틸(전역 예외 등). 모든 모듈이 안전하게 의존 가능.
 - **domain**: 서비스 전역에서 공유하는 JPA 엔티티 (`PublicServiceReservation`).
-- **collector**: 수집 파이프라인 + 수집 운영용 엔티티(`CollectionHistory`, `ServiceChangeLog`, `DataSourceCatalog`). 이 엔티티들은 수집 모듈 내부에서만 사용되므로 외부 노출하지 않습니다.
+- **collector**: 수집 파이프라인 + 수집 운영용 엔티티(`CollectionHistory`, `ServiceChangeLog`, `ApiSourceCatalog`). 이 엔티티들은 수집 모듈 내부에서만 사용되므로 외부 노출하지 않습니다.
 
 ---
 

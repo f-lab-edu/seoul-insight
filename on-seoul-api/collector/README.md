@@ -50,11 +50,11 @@ collector/
 ├── domain/                         # 수집 파이프라인 전용 엔티티
 │   ├── CollectionHistory.java      # 수집 실행 이력
 │   ├── ServiceChangeLog.java       # 서비스 단위 변경 이력
-│   └── DataSourceCatalog.java      # 수집 대상 API 카탈로그
+│   └── ApiSourceCatalog.java      # 수집 대상 API 카탈로그
 ├── repository/
 │   ├── CollectionHistoryRepository.java
 │   ├── ServiceChangeLogRepository.java
-│   └── DataSourceCatalogRepository.java
+│   └── ApiSourceCatalogRepository.java
 ├── enums/
 │   ├── CollectionStatus.java       # SUCCESS / FAILED / PARTIAL
 │   └── ChangeType.java             # NEW / UPDATED / DELETED

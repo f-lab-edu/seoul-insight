@@ -11,10 +11,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "data_source_catalog")
+@Table(name = "api_source_catalog")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class DataSourceCatalog {
+public class ApiSourceCatalog {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,11 +23,14 @@ public class DataSourceCatalog {
     @Column(name = "dataset_id", nullable = false, unique = true, length = 20)
     private String datasetId;
 
-    @Column(name = "api_name", nullable = false, length = 100)
-    private String apiName;
+    @Column(name = "dataset_name", nullable = false, length = 100)
+    private String datasetName;
 
-    @Column(name = "api_url", nullable = false, columnDefinition = "TEXT")
-    private String apiUrl;
+    @Column(name = "dataset_url", nullable = false, columnDefinition = "TEXT")
+    private String datasetUrl;
+
+    @Column(name = "api_service_path", nullable = false, length = 100)
+    private String apiServicePath;
 
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
@@ -46,11 +49,11 @@ public class DataSourceCatalog {
     private LocalDateTime createdAt;
 
     @Builder
-    public DataSourceCatalog(String datasetId, String apiName, String apiUrl,
-                             boolean active, String tags) {
+    public ApiSourceCatalog(String datasetId, String datasetName, String datasetUrl,
+                            boolean active, String tags) {
         this.datasetId = datasetId;
-        this.apiName = apiName;
-        this.apiUrl = apiUrl;
+        this.datasetName = datasetName;
+        this.datasetUrl = datasetUrl;
         this.active = active;
         this.tags = tags;
     }
