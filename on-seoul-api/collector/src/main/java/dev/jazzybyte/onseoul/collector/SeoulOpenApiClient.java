@@ -37,7 +37,7 @@ public class SeoulOpenApiClient {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.retrySpec = Retry.backoff(properties.getMaxRetries(), Duration.ofSeconds(1))
-                .maxBackoff(Duration.ofSeconds(10))
+                .maxBackoff(Duration.ofSeconds(properties.getMaxBackoffSeconds()))
                 .filter(ex -> ex instanceof SeoulApiServerException);
     }
 
