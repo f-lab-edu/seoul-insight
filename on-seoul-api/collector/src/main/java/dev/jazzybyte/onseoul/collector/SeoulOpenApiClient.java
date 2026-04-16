@@ -90,9 +90,14 @@ public class SeoulOpenApiClient {
                                   new SeoulApiException(ErrorCode.COLLECT_API_CLIENT_ERROR,
                                                         "서울 API 클라이언트 오류: " + resp.statusCode())))
                 .bodyToMono(String.class)
+                .switchIfEmpty(Mono.error(new SeoulApiException(ErrorCode.COLLECT_API_PARSE_ERROR,
+                                                                "빈 응답: serviceName=" + serviceName)))
+                .onErrorMap(java.util.concurrent.TimeoutException.class,
+                            e -> new SeoulApiException(ErrorCode.COLLECT_API_TIMEOUT,
+                                                       "응답 시간 초과: serviceName=" + serviceName))
                 .map(body -> parseResponse(body, serviceName))
                 .retryWhen(retrySpec)
-                .block();
+                .block(properties.getBlockTimeout());
     }
 
     private SeoulApiResponse parseResponse(String body, String serviceName) {

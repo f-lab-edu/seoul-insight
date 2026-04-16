@@ -207,6 +207,17 @@ class SeoulOpenApiClientTest {
                 .hasMessageContaining("ListPublicReservationCulture");
     }
 
+    @Test
+    @DisplayName("빈 응답 body를 받으면 SeoulApiException이 발생한다")
+    void fetchPage_throws_on_empty_body() {
+        mockWebServer.enqueue(new MockResponse()
+                .setHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .setBody(""));
+
+        assertThatThrownBy(() -> client.fetchPage("ListPublicReservationCulture", 1, 1000))
+                .isInstanceOf(SeoulApiException.class);
+    }
+
     // ────────────────────────────────────────────
     // 헬퍼 메서드
     // ────────────────────────────────────────────
