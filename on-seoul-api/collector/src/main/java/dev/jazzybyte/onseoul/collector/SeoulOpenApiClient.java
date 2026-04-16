@@ -10,6 +10,7 @@ import dev.jazzybyte.onseoul.collector.exception.SeoulApiException;
 import dev.jazzybyte.onseoul.collector.exception.SeoulApiServerException;
 import dev.jazzybyte.onseoul.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -36,8 +37,8 @@ public class SeoulOpenApiClient {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.retrySpec = Retry.backoff(properties.getMaxRetries(), Duration.ofSeconds(1))
-                              .maxBackoff(Duration.ofSeconds(10))
-                              .filter(ex -> ex instanceof SeoulApiServerException);
+                .maxBackoff(Duration.ofSeconds(10))
+                .filter(ex -> ex instanceof SeoulApiServerException);
     }
 
     // 테스트용 생성자 — retrySpec 주입
@@ -59,13 +60,18 @@ public class SeoulOpenApiClient {
      */
     public List<PublicServiceRow> fetchAll(String serviceName) {
         int pageSize = properties.getPageSize();
-
         SeoulApiResponse firstPage = fetchPage(serviceName, 1, pageSize);
         int totalCount = firstPage.getListTotalCount();
 
-        log.info("서울시 Open API 수집 시작: serviceName={}, 전체={}건", serviceName, totalCount);
+        List<PublicServiceRow> result = new ArrayList<>();
 
-        List<PublicServiceRow> result = new ArrayList<>(totalCount);
+        if (totalCount == 0 || firstPage.getRows().isEmpty()) {
+            log.info("서울시 Open API 수집 결과 없으므로 수집 생략. serviceName={}", serviceName);
+            return result;
+        }
+
+        log.info("서울시 Open API 수집 시작: serviceName={}, 전체={}건", serviceName, totalCount);
+        result = new ArrayList<>(totalCount);
         result.addAll(firstPage.getRows());
 
         for (int start = pageSize + 1; start <= totalCount; start += pageSize) {
@@ -80,21 +86,21 @@ public class SeoulOpenApiClient {
     SeoulApiResponse fetchPage(String serviceName, int startIndex, int endIndex) {
         return webClient.get()
                 .uri("/{key}/json/{serviceName}/{start}/{end}/",
-                     properties.getKey(), serviceName, startIndex, endIndex)
+                        properties.getKey(), serviceName, startIndex, endIndex)
                 .retrieve()
-                .onStatus(status -> status.is5xxServerError(),
-                          resp -> Mono.error(
-                                  new SeoulApiServerException("서울 API 서버 오류: " + resp.statusCode())))
-                .onStatus(status -> status.is4xxClientError(),
-                          resp -> Mono.error(
-                                  new SeoulApiException(ErrorCode.COLLECT_API_CLIENT_ERROR,
-                                                        "서울 API 클라이언트 오류: " + resp.statusCode())))
+                .onStatus(HttpStatusCode::is5xxServerError,
+                        resp -> Mono.error(
+                                new SeoulApiServerException("서울 API 서버 오류: " + resp.statusCode())))
+                .onStatus(HttpStatusCode::is4xxClientError,
+                        resp -> Mono.error(
+                                new SeoulApiException(ErrorCode.COLLECT_API_CLIENT_ERROR,
+                                        "서울 API 클라이언트 오류: " + resp.statusCode())))
                 .bodyToMono(String.class)
                 .switchIfEmpty(Mono.error(new SeoulApiException(ErrorCode.COLLECT_API_PARSE_ERROR,
-                                                                "빈 응답: serviceName=" + serviceName)))
+                        "빈 응답: serviceName=" + serviceName)))
                 .onErrorMap(java.util.concurrent.TimeoutException.class,
-                            e -> new SeoulApiException(ErrorCode.COLLECT_API_TIMEOUT,
-                                                       "응답 시간 초과: serviceName=" + serviceName))
+                        e -> new SeoulApiException(ErrorCode.COLLECT_API_TIMEOUT,
+                                "응답 시간 초과: serviceName=" + serviceName))
                 .map(body -> parseResponse(body, serviceName))
                 .retryWhen(retrySpec)
                 .block(properties.getBlockTimeout());
@@ -106,7 +112,7 @@ public class SeoulOpenApiClient {
             JsonNode inner = root.get(serviceName);
             if (inner == null || inner.isNull()) {
                 throw new SeoulApiException(ErrorCode.COLLECT_API_PARSE_ERROR,
-                                            "API 응답에서 서비스 키를 찾을 수 없음: " + serviceName);
+                        "API 응답에서 서비스 키를 찾을 수 없음: " + serviceName);
             }
             SeoulApiResponse response = objectMapper.treeToValue(inner, SeoulApiResponse.class);
             if (response.isNoData()) {
@@ -115,15 +121,15 @@ public class SeoulOpenApiClient {
             }
             if (!response.isSuccess()) {
                 throw new SeoulApiException(ErrorCode.COLLECT_API_CLIENT_ERROR,
-                                            "API 오류 코드: " + response.getResult().getCode()
-                                            + " / " + response.getResult().getMessage());
+                        "API 오류 코드: " + response.getResult().getCode()
+                                + " / " + response.getResult().getMessage());
             }
             return response;
         } catch (SeoulApiException e) {
             throw e;
         } catch (Exception e) {
             throw new SeoulApiException(ErrorCode.COLLECT_API_PARSE_ERROR,
-                                        "API 응답 파싱 실패: " + e.getMessage(), e);
+                    "API 응답 파싱 실패: " + e.getMessage(), e);
         }
     }
 }
