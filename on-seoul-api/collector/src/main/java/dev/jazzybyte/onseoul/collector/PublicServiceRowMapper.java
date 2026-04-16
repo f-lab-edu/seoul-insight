@@ -52,11 +52,11 @@ public class PublicServiceRowMapper {
         String svcnm = row.getSvcnm();
 
         if (svcid == null || svcid.isBlank()) {
-            log.error("필수 필드 누락으로 row 스킵 — field=SVCID");
+            log.warn("필수 필드 누락으로 row 스킵 — field=SVCID");
             return Optional.empty();
         }
         if (svcnm == null || svcnm.isBlank()) {
-            log.error("필수 필드 누락으로 row 스킵 — svcid={}, field=SVCNM", svcid);
+            log.warn("필수 필드 누락으로 row 스킵 — svcid={}, field=SVCNM", svcid);
             return Optional.empty();
         }
 
