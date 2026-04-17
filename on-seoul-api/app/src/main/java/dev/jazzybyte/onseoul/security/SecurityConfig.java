@@ -13,13 +13,11 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        // TODO(Phase 13): JWT 필터 + OAuth2 로그인 구현 후 anyRequest().authenticated()로 교체
         http
             .csrf(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests(auth -> auth
-                // 개발/운영 점검용 수동 트리거 — 추후 IP 제한 또는 내부망 전용으로 보호
-                .requestMatchers("/admin/**").permitAll()
-                .requestMatchers("/actuator/health").permitAll()
-                .anyRequest().authenticated()
+                .anyRequest().permitAll()
             );
 
         return http.build();
