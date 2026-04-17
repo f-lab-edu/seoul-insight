@@ -14,4 +14,6 @@ public interface PublicServiceReservationRepository extends JpaRepository<Public
     List<PublicServiceReservation> findAllByDeletedAtIsNull();
 
     List<PublicServiceReservation> findAllByServiceIdIn(Collection<String> serviceIds);
+
+    List<PublicServiceReservation> findAllByCoordXIsNullOrCoordYIsNull();
 }

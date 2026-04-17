@@ -11,7 +11,7 @@ import reactor.netty.http.client.HttpClient;
 import java.time.Duration;
 
 @Configuration
-@EnableConfigurationProperties(SeoulApiProperties.class)
+@EnableConfigurationProperties({SeoulApiProperties.class, KakaoApiProperties.class})
 public class CollectorConfig {
 
     @Bean
@@ -23,6 +23,14 @@ public class CollectorConfig {
         return WebClient.builder()
                 .baseUrl(properties.getBaseUrl())
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .build();
+    }
+
+    @Bean
+    public WebClient kakaoWebClient(KakaoApiProperties properties) {
+        return WebClient.builder()
+                .baseUrl(properties.getBaseUrl())
+                .defaultHeader("Authorization", "KakaoAK " + properties.getKey())
                 .build();
     }
 }
