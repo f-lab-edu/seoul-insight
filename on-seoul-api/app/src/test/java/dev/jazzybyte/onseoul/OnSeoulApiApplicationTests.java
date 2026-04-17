@@ -1,10 +1,13 @@
 package dev.jazzybyte.onseoul;
 
+import dev.jazzybyte.onseoul.collector.service.CollectionService;
+import dev.jazzybyte.onseoul.collector.service.UpsertService;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
  * 애플리케이션 컨텍스트 로딩 검증.
@@ -22,6 +25,13 @@ import org.springframework.test.context.TestPropertySource;
         "org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration"
 })
 class OnSeoulApiApplicationTests {
+
+    // JPA/Redis가 제외된 테스트 컨텍스트에서 JPA 의존 빈을 대체한다
+    @MockitoBean
+    CollectionService collectionService;
+
+    @MockitoBean
+    UpsertService upsertService;
 
     @Test
     void contextLoads(ApplicationContext applicationContext) {
