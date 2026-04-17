@@ -32,7 +32,7 @@ public class GeocodingService {
      */
     public void fillMissingCoords() {
         if (properties.getKey().isBlank()) {
-            log.warn("KAKAO_API_KEY 미설정 — Geocoding sweep 스킵");
+            log.warn("KAKAO_REST_API_KEY 미설정 — Geocoding sweep 스킵");
             return;
         }
 
@@ -51,7 +51,7 @@ public class GeocodingService {
             }
 
             Optional<BigDecimal[]> coords = coordsCache.computeIfAbsent(placeName,
-                    geocodingClient::search);
+                    geocodingClient::keywordSearch);
 
             if (coords.isPresent()) {
                 record.updateCoords(coords.get()[0], coords.get()[1]);

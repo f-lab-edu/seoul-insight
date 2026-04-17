@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.ToString;
 
 import java.util.List;
 
@@ -20,6 +21,7 @@ public class KakaoGeocodingResponse {
     @Setter
     @NoArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
+    @ToString
     public static class Document {
         /** 경도 (longitude) */
         private String x;
@@ -27,5 +29,7 @@ public class KakaoGeocodingResponse {
         private String y;
         @JsonProperty("place_name")
         private String placeName;
+        @JsonProperty("address_name")
+        private String addressName;
     }
 }

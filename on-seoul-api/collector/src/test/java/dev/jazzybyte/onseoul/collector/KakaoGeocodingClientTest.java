@@ -46,7 +46,7 @@ class KakaoGeocodingClientTest {
 
     @Test
     @DisplayName("장소명으로 검색하면 좌표를 반환한다")
-    void search_returns_coords_for_place() throws InterruptedException {
+    void addressSearch_returns_coords_for_place() throws InterruptedException {
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .addHeader("Content-Type", "application/json")
@@ -55,7 +55,7 @@ class KakaoGeocodingClientTest {
                          "meta":{"total_count":1}}
                         """));
 
-        Optional<BigDecimal[]> result = client.search("서울시청");
+        Optional<BigDecimal[]> result = client.addressSearch("서울시청");
 
         assertThat(result).isPresent();
         assertThat(result.get()[0]).isEqualByComparingTo("126.9784");
@@ -68,7 +68,7 @@ class KakaoGeocodingClientTest {
 
     @Test
     @DisplayName("검색 결과가 없으면 Optional.empty()를 반환한다")
-    void search_returns_empty_when_no_result() {
+    void addressSearch_returns_empty_when_no_result() {
         mockWebServer.enqueue(new MockResponse()
                 .setResponseCode(200)
                 .addHeader("Content-Type", "application/json")
@@ -76,17 +76,17 @@ class KakaoGeocodingClientTest {
                         {"documents":[],"meta":{"total_count":0}}
                         """));
 
-        Optional<BigDecimal[]> result = client.search("존재하지않는장소명");
+        Optional<BigDecimal[]> result = client.addressSearch("존재하지않는장소명");
 
         assertThat(result).isEmpty();
     }
 
     @Test
     @DisplayName("API 오류(4xx/5xx) 시 Optional.empty()를 반환한다")
-    void search_returns_empty_on_api_error() {
+    void addressSearch_returns_empty_on_api_error() {
         mockWebServer.enqueue(new MockResponse().setResponseCode(500));
 
-        Optional<BigDecimal[]> result = client.search("서울시청");
+        Optional<BigDecimal[]> result = client.addressSearch("서울시청");
 
         assertThat(result).isEmpty();
     }

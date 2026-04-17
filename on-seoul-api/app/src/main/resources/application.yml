@@ -32,3 +32,8 @@ seoul:
     max-backoff-seconds: 10
     connect-timeout-ms: 10000
     response-timeout-seconds: 30
+
+
+kakao:
+  api:
+    key: ${KAKAO_REST_API_KEY}
