@@ -1,7 +1,7 @@
 [project]
 name = "on-seoul-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI 서비스(멀티에이전트 오케스트레이션)"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -33,3 +33,7 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+addopts = "-m 'not external_api'"
+markers = [
+    "external_api: 실제 외부 API를 호출하는 연동 테스트",
+]
