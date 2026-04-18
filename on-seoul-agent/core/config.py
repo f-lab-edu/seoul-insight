@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     gpt_model: str = "gpt-4o-mini"
 
-    # 임베딩은 OpenAI 고정 (DDL vector(1536) 기준)
-    embedding_model: str = "text-embedding-3-small"
+    # 임베딩 — Gemini, output_dimensionality=1536 (DDL vector(1536) 기준)
+    embedding_model: str = "models/gemini-embedding-2-preview"
 
 
 settings = Settings()

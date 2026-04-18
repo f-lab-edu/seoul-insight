@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS service_embeddings (
     service_id  VARCHAR(255)  NOT NULL UNIQUE,
     service_name TEXT          NOT NULL,
     metadata    JSONB,
-    embedding   vector(1536),           -- text-embedding-3-small 차원
+    embedding   vector(1536),            -- Gemini gemini-embedding-2-preview (output_dimensionality=1536)
     created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
