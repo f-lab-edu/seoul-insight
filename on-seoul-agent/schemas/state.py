@@ -1,11 +1,19 @@
+from enum import Enum
 from typing import Any, TypedDict
+
+
+class IntentType(str, Enum):
+    SQL_SEARCH = "SQL_SEARCH"
+    VECTOR_SEARCH = "VECTOR_SEARCH"
+    MAP = "MAP"
+    FALLBACK = "FALLBACK"
 
 
 class AgentState(TypedDict):
     user_id: str
     session_id: str
     message: str  # 사용자 원본 질문
-    intent: str | None  # SQL_SEARCH / VECTOR_SEARCH / MAP / FALLBACK
+    intent: IntentType | None  # SQL_SEARCH / VECTOR_SEARCH / MAP / FALLBACK
     refined_query: str | None  # Vector Agent가 정제한 질의
     sql_results: list[dict[str, Any]] | None  # SQL Agent 결과
     vector_results: list[dict[str, Any]] | None  # Vector Agent 결과

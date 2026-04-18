@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from schemas.state import IntentType
+
 
 class ChatRequest(BaseModel):
     user_id: str
@@ -10,4 +12,4 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     session_id: str
     message: str
-    intent: str | None = None  # SQL_SEARCH, VECTOR_SEARCH, MAP, FALLBACK
+    intent: IntentType | None = None
