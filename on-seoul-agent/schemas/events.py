@@ -15,4 +15,4 @@ class EventType(str, Enum):
 class SSEEvent(BaseModel):
     event: EventType
     data: Any = None
-    session_id: str | None = None
+    message_id: int | None = None

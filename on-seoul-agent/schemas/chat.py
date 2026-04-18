@@ -4,12 +4,12 @@ from schemas.state import IntentType
 
 
 class ChatRequest(BaseModel):
-    user_id: str
-    session_id: str
+    room_id: int
+    message_id: int
     message: str
 
 
 class ChatResponse(BaseModel):
-    session_id: str
+    message_id: int
     message: str
     intent: IntentType | None = None
