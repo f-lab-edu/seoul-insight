@@ -20,9 +20,16 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379"
 
-    # LLM
-    openai_api_key: str
-    openai_model: str = "gpt-4o-mini"
+    # LLM — Gemini 우선, GPT 폴백
+    llm_provider: str = "gemini"  # gemini | openai
+
+    google_api_key: str | None = None
+    gemini_model: str = "gemini-2.0-flash"
+
+    openai_api_key: str | None = None
+    gpt_model: str = "gpt-4o-mini"
+
+    # 임베딩은 OpenAI 고정 (DDL vector(1536) 기준)
     embedding_model: str = "text-embedding-3-small"
 
 

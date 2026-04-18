@@ -57,3 +57,6 @@ firebase-adminsdk*.json
 # Claude
 .claude/
 CLAUDE.md
+
+# Gemini
+GEMINI.md

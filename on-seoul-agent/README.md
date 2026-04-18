@@ -112,7 +112,7 @@ on-seoul-agent/
 │   ├── vector_search.py     # pgvector 유사도 검색
 │   └── map_search.py        # 반경 검색 + GeoJSON 반환
 ├── llm/
-│   ├── client.py            # LLM API 호출 추상화 (Claude / GPT)
+│   ├── client.py            # LLM API 호출 추상화 (Gemini / GPT)
 │   └── embedder.py          # 텍스트 → 벡터 변환
 ├── schemas/
 │   ├── state.py             # AgentState (LangGraph 공유 상태)
@@ -135,7 +135,7 @@ on-seoul-agent/
 |---|---|
 | 프레임워크 | FastAPI |
 | 에이전트 오케스트레이션 | LangChain + LangGraph |
-| LLM | OpenAI (Claude / GPT 전환 가능) |
+| LLM | Gemini 2.0 Flash (기본) / GPT-4o-mini (폴백) |
 | DB | PostgreSQL + pgvector (async SQLAlchemy) |
 | 캐시 | Redis |
 | 패키지 관리 | uv |
