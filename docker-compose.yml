@@ -2,48 +2,24 @@ services:
   api:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/on-seoul-api:${API_TAG:-latest}
     container_name: on-seoul-api
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"          # 호스트에 직접 바인딩하지 않음. nginx만 접근
     environment:
       - SPRING_PROFILES_ACTIVE=prod
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/onseoul
-      - SPRING_DATASOURCE_USERNAME=jazz
-      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
-      - SPRING_DATA_REDIS_HOST=redis
+    env_file:
+      - .env.secret     # 민감 정보만 컨테이너로 주입
     depends_on:
       - postgres
       - redis
-    networks:
-      - on-seoul-network
-    restart: always
 
-  postgres:
-    image: postgres:16-alpine
-    container_name: on-seoul-db
-    environment:
-      - POSTGRES_DB=onseoul
-      - POSTGRES_USER=jazz
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - on-seoul-network
-    restart: always
+  agent:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/on-seoul-agent:${AGENT_TAG:-latest}
+    container_name: on-seoul-agent
+    expose:
+      - "8000"
+    env_file:
+      - .env.secret
+    depends_on:
+      - redis
+      - qdrant
 
-  redis:
-    image: redis:7-alpine
-    container_name: on-seoul-redis
-    ports:
-      - "6379:6379"
-    networks:
-      - on-seoul-network
-    restart: always
-
-networks:
-  on-seoul-network:
-    driver: bridge
-
-volumes:
-  postgres_data:

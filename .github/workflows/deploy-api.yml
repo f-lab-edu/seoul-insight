@@ -53,22 +53,27 @@ jobs:
         env:
           SHA: ${{ github.sha }}
           REPO_OWNER: ${{ github.repository_owner }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
-          # 배포 디렉토리 생성 (없으면)
           mkdir -p ~/on-seoul
-          
-          # docker-compose.yml 복사 (checkout된 현재 디렉토리에서)
+
+          # docker-compose.yml은 레포 정본 기준으로 항상 갱신
           cp docker-compose.yml ~/on-seoul/
-          
+
+          # .env.secret 존재 확인 (초기 서버 세팅 필수 — 없으면 배포 중단)
+          if [ ! -f ~/on-seoul/.env.secret ]; then
+            echo "ERROR: ~/on-seoul/.env.secret not found. Create it before first deployment."
+            exit 1
+          fi
+
           cd ~/on-seoul
-          
-          # .env 파일 생성 또는 업데이트
-          echo "API_TAG=${SHA}" > .env
+
+          # .env: compose 변수만 갱신 (이미지 태그, repo owner)
+          touch .env
+          sed -i "/^API_TAG=/d" .env
+          sed -i "/^GITHUB_REPOSITORY_OWNER=/d" .env
+          echo "API_TAG=${SHA}" >> .env
           echo "GITHUB_REPOSITORY_OWNER=${REPO_OWNER,,}" >> .env
-          echo "DB_PASSWORD=${DB_PASSWORD}" >> .env
-          
-          # Docker Compose 실행
+
           docker compose pull api
           docker compose up -d --no-deps api
           docker image prune -f
