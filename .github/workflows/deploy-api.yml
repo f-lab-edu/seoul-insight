@@ -1,0 +1,43 @@
+name: deploy api
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'on-seoul-api/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest        # GitHub 호스팅 runner — 빌드 전용
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./on-seoul-api
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/on-seoul-api:latest
+            ghcr.io/${{ github.repository_owner }}/on-seoul-api:${{ github.sha }}
+
+  deploy:
+    needs: build
+    runs-on: self-hosted          # 서버에 설치된 runner — 배포 전용
+    steps:
+      - name: Deploy api
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          cd ~/on-seoul
+          echo "API_TAG=${SHA}" > .env
+          docker compose pull api
+          docker compose up -d --no-deps api
+          docker image prune -f
