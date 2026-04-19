@@ -2,6 +2,10 @@ plugins {
     id 'org.springframework.boot'
 }
 
+tasks.named('bootJar') {
+    archiveFileName = 'app.jar'
+}
+
 dependencies {
     implementation project(':common')
     implementation project(':domain')
