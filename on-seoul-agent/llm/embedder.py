@@ -13,11 +13,11 @@ class Embedder:
         try:
             return await self._embeddings.aembed_query(text)
         except Exception as e:
-            raise LLMException(f"Embedding failed: {str(e)}", detail=e)
+            raise LLMException(f"Embedding failed: {str(e)}", detail=e) from e
 
     async def embed_many(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple texts and return a list of vectors."""
         try:
             return await self._embeddings.aembed_documents(texts)
         except Exception as e:
-            raise LLMException(f"Batch embedding failed: {str(e)}", detail=e)
+            raise LLMException(f"Batch embedding failed: {str(e)}", detail=e) from e

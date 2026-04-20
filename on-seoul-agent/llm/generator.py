@@ -20,4 +20,4 @@ class Generator:
             response = await self._model.ainvoke(messages)
             return str(response.content)
         except Exception as e:
-            raise LLMException(f"LLM generation failed: {str(e)}", detail=e)
+            raise LLMException(f"LLM generation failed: {str(e)}", detail=e) from e
