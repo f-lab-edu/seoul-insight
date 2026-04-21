@@ -1,6 +1,7 @@
 """llm/client.py 단위 테스트.
 
-_rate_limited 데코레이터와 _GeminiEmbeddings 래퍼의 동작을 검증한다.
+_rate_limited 데코레이터, _GeminiEmbeddings 래퍼,
+get_chat_model / get_embeddings 팩토리 함수의 동작을 검증한다.
 실제 API 호출 없이 mock으로만 실행된다.
 """
 import asyncio
@@ -10,7 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from aiolimiter import AsyncLimiter
 
-from llm.client import _GeminiEmbeddings, _rate_limited
+from core.exceptions import ConfigurationException
+from llm.client import _GeminiEmbeddings, _rate_limited, get_chat_model, get_embeddings
 
 
 # ---------------------------------------------------------------------------
@@ -191,3 +193,129 @@ class TestGeminiEmbeddings:
             elapsed = time.monotonic() - start
 
         assert elapsed >= 1.0, f"rate limit 미적용 — {elapsed:.2f}s 만에 완료됨"
+
+
+# ---------------------------------------------------------------------------
+# get_chat_model 팩토리
+# ---------------------------------------------------------------------------
+
+
+class TestGetChatModel:
+    """get_chat_model 팩토리 함수 테스트.
+
+    실제 LLM 클래스 생성을 막기 위해 ChatGoogleGenerativeAI / ChatOpenAI 생성자를 mock한다.
+    settings는 llm.client 모듈 내 참조를 직접 patch한다.
+    """
+
+    # --- API 키 누락 시 즉시 실패 ---
+
+    def test_gemini_raises_when_google_api_key_missing(self):
+        """google_api_key 없이 gemini provider 요청 시 ConfigurationException."""
+        with patch("llm.client.settings") as mock_settings:
+            mock_settings.llm_provider = "gemini"
+            mock_settings.google_api_key = None
+
+            with pytest.raises(ConfigurationException, match="GOOGLE_API_KEY"):
+                get_chat_model(provider="gemini")
+
+    def test_google_alias_raises_when_google_api_key_missing(self):
+        """provider='google' 별칭도 동일하게 검사한다."""
+        with patch("llm.client.settings") as mock_settings:
+            mock_settings.llm_provider = "google"
+            mock_settings.google_api_key = ""  # 빈 문자열도 누락으로 취급
+
+            with pytest.raises(ConfigurationException, match="GOOGLE_API_KEY"):
+                get_chat_model(provider="google")
+
+    def test_openai_raises_when_openai_api_key_missing(self):
+        """openai_api_key 없이 openai provider 요청 시 ConfigurationException."""
+        with patch("llm.client.settings") as mock_settings:
+            mock_settings.llm_provider = "openai"
+            mock_settings.openai_api_key = None
+
+            with pytest.raises(ConfigurationException, match="OPENAI_API_KEY"):
+                get_chat_model(provider="openai")
+
+    def test_unknown_provider_raises(self):
+        """지원하지 않는 provider 문자열은 ConfigurationException."""
+        with patch("llm.client.settings") as mock_settings:
+            mock_settings.llm_provider = "anthropic"
+
+            with pytest.raises(ConfigurationException, match="Unknown LLM provider"):
+                get_chat_model(provider="anthropic")
+
+    # --- 정상 경로: 올바른 클래스 인스턴스 반환 ---
+
+    def test_gemini_returns_chat_google_generative_ai(self):
+        """google_api_key가 있으면 ChatGoogleGenerativeAI 인스턴스를 반환한다."""
+        with (
+            patch("llm.client.settings") as mock_settings,
+            patch("llm.client.ChatGoogleGenerativeAI") as mock_cls,
+        ):
+            mock_settings.llm_provider = "gemini"
+            mock_settings.google_api_key = "fake-google-key"
+            mock_settings.gemini_model = "gemini-2.0-flash"
+
+            result = get_chat_model(provider="gemini")
+
+            mock_cls.assert_called_once()
+            assert result is mock_cls.return_value
+
+    def test_openai_returns_chat_openai(self):
+        """openai_api_key가 있으면 ChatOpenAI 인스턴스를 반환한다."""
+        with (
+            patch("llm.client.settings") as mock_settings,
+            patch("llm.client.ChatOpenAI") as mock_cls,
+        ):
+            mock_settings.llm_provider = "openai"
+            mock_settings.openai_api_key = "fake-openai-key"
+            mock_settings.gpt_model = "gpt-4o-mini"
+
+            result = get_chat_model(provider="openai")
+
+            mock_cls.assert_called_once()
+            assert result is mock_cls.return_value
+
+    def test_default_provider_from_settings(self):
+        """provider 인자 생략 시 settings.llm_provider를 사용한다."""
+        with (
+            patch("llm.client.settings") as mock_settings,
+            patch("llm.client.ChatOpenAI"),
+        ):
+            mock_settings.llm_provider = "openai"
+            mock_settings.openai_api_key = "fake-openai-key"
+            mock_settings.gpt_model = "gpt-4o-mini"
+
+            # provider 인자 없이 호출 — settings.llm_provider="openai"가 적용되어야 한다
+            get_chat_model()  # ConfigurationException 없이 통과하면 OK
+
+
+# ---------------------------------------------------------------------------
+# get_embeddings 팩토리
+# ---------------------------------------------------------------------------
+
+
+class TestGetEmbeddings:
+    """get_embeddings 팩토리 함수 테스트."""
+
+    def test_raises_when_google_api_key_missing(self):
+        """google_api_key 없으면 ConfigurationException."""
+        with patch("llm.client.settings") as mock_settings:
+            mock_settings.google_api_key = None
+
+            with pytest.raises(ConfigurationException, match="GOOGLE_API_KEY"):
+                get_embeddings()
+
+    def test_returns_gemini_embeddings_instance(self):
+        """google_api_key가 있으면 _GeminiEmbeddings 인스턴스를 반환한다."""
+        with (
+            patch("llm.client.settings") as mock_settings,
+            patch("llm.client.GoogleGenerativeAIEmbeddings") as mock_cls,
+        ):
+            mock_settings.google_api_key = "fake-google-key"
+            mock_settings.embedding_model = "models/gemini-embedding-2-preview"
+
+            result = get_embeddings()
+
+            mock_cls.assert_called_once()
+            assert isinstance(result, _GeminiEmbeddings)

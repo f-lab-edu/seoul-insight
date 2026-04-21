@@ -70,12 +70,16 @@ def get_chat_model(
     selected_provider = provider or settings.llm_provider
 
     if selected_provider in ("gemini", "google"):
+        if not settings.google_api_key:
+            raise ConfigurationException("GOOGLE_API_KEY is required for Gemini provider")
         return ChatGoogleGenerativeAI(
             google_api_key=settings.google_api_key,
             model=model or settings.gemini_model,
             temperature=temperature,
         )
     elif selected_provider == "openai":
+        if not settings.openai_api_key:
+            raise ConfigurationException("OPENAI_API_KEY is required for OpenAI provider")
         return ChatOpenAI(
             api_key=settings.openai_api_key,
             model=model or settings.gpt_model,
@@ -93,6 +97,8 @@ def get_embeddings(model: str | None = None) -> Embeddings:
 
     Gemini gemini-embedding-2-preview, output_dimensionality=1536 (DDL vector(1536) 기준).
     """
+    if not settings.google_api_key:
+        raise ConfigurationException("GOOGLE_API_KEY is required for Gemini embeddings")
     base = GoogleGenerativeAIEmbeddings(
         google_api_key=settings.google_api_key,
         model=model or settings.embedding_model,
