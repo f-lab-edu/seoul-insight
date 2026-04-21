@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Database (PostgreSQL)
-    database_url: str
+    # on_ai_database_url  : on_ai DB — AI 서비스 전용 (service_embeddings, chat_agent_traces). CRUD 권한.
+    # on_data_database_url: on_data DB — 정형 데이터 (public_service_reservations 등). SELECT 전용 계정.
+    on_ai_database_url: str
+    on_data_database_url: str
 
     # Redis
     redis_url: str = "redis://localhost:6379"
