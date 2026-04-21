@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -7,4 +7,4 @@ from pydantic import BaseModel, Field
 class AgentTrace(BaseModel):
     message_id: int
     trace: dict[str, Any]
-    created_at: datetime = Field(default_factory=datetime.now)
+    crreated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
