@@ -4,8 +4,11 @@ from core.config import settings
 
 
 def setup_logging() -> None:
-    log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    """어플리케이션 Logger 설정"""
+    logger = logging.getLogger("on_seoul_agent")
+    logger.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
     )
+    logger.addHandler(handler)
