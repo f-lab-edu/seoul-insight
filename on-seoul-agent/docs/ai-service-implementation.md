@@ -25,7 +25,7 @@ FastAPI + LangChain 기반 멀티에이전트 서비스 구현 순서.
 
 ### Phase 2. 스키마 및 DB 정의
 
-- [x] `schemas/chat.py` — `ChatRequest` (room_id, message_id, message 필수), `ChatResponse` (answer, intent, title 포함)
+- [x] `schemas/chat.py` — `ChatRequest` (room_id, message_id, message 필수), `ChatResponse` (message_id, answer, intent, title 포함)
 - [x] `schemas/state.py` — `AgentState` (room_id·message_id 기반, title_needed 플래그, 실행 trace, 검색 결과 공유)
 - [x] `schemas/events.py` — SSE 이벤트 타입 (`agent_start`, `tool_call`, `token`, `done` 등)
 - [x] `schemas/trace.py` — `chat_agent_traces` JSONB 페이로드 모델 정의 (intent, node 경로, 소요시간 등)

@@ -20,5 +20,6 @@ class AgentState(TypedDict):
     vector_results: list[dict[str, Any]] | None  # Vector Agent 결과
     map_results: dict[str, Any] | None  # map_search GeoJSON 결과
     answer: str | None  # Answer Agent가 생성한 최종 답변
+    title: str | None  # Answer Agent가 생성한 대화 제목 (title_needed=True일 때)
     trace: dict[str, Any] | None  # LangGraph 실행 메타데이터
     error: str | None  # 오류 메시지 (있을 경우)
