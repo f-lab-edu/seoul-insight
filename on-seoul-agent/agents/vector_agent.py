@@ -5,15 +5,15 @@
 3. on_ai_app 세션으로 service_embeddings에서 코사인 유사도 상위 K개를 조회한다.
 """
 
+from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from llm.client import get_chat_model, get_embeddings
-from langchain_core.embeddings import Embeddings
 from schemas.state import AgentState
+from tools.vector_search import vector_search
 
 _REFINE_SYSTEM = """\
 당신은 서울시 공공서비스 예약 검색 전문가입니다.
@@ -23,9 +23,6 @@ _REFINE_SYSTEM = """\
 """
 
 _REFINE_HUMAN = "사용자 질의: {message}"
-
-_TOP_K = 10
-_MIN_SIMILARITY = 0.6  # 코사인 유사도 하한 (0~1, 높을수록 관련성 높음)
 
 
 class _RefinedQuery(BaseModel):
@@ -57,35 +54,9 @@ class VectorAgent:
             {"message": state["message"]}
         )
         query_vector = await self._embeddings.aembed_query(refined.refined_query)
-        rows = await self._similarity_search(session, query_vector)
+        rows = await vector_search(session, query_vector)
         return {
             **state,
             "refined_query": refined.refined_query,
             "vector_results": rows,
         }
-
-    async def _similarity_search(
-        self, session: AsyncSession, query_vector: list[float]
-    ) -> list[dict]:
-        """코사인 거리 기준 상위 K개 조회. score_threshold 초과 행은 제외."""
-        sql = text("""
-            SELECT
-                service_id,
-                service_name,
-                metadata,
-                1 - (embedding <=> CAST(:query_vector AS vector)) AS similarity
-            FROM service_embeddings
-            WHERE 1 - (embedding <=> CAST(:query_vector AS vector)) >= :threshold
-            ORDER BY embedding <=> CAST(:query_vector AS vector)
-            LIMIT :top_k
-        """)
-        result = await session.execute(
-            sql,
-            {
-                "query_vector": str(query_vector),
-                "threshold": _MIN_SIMILARITY,
-                "top_k": _TOP_K,
-            },
-        )
-        keys = result.keys()
-        return [dict(zip(keys, row)) for row in result.fetchall()]
