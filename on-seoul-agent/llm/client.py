@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
@@ -36,8 +35,11 @@ class _GeminiEmbeddings(Embeddings):
     """GoogleGenerativeAIEmbeddings 래퍼.
 
     aembed_documents가 배치를 단일 호출로 합치는 버그를 우회한다.
-    aembed_query를 asyncio.gather로 병렬 호출하여 각 텍스트의 벡터를 독립적으로 얻는다.
-    rate limiter를 적용하여 대량 배치 처리 시 API 한도 초과를 방지한다.
+    aembed_query를 순차 호출하여 rate limiter가 실제로 동작하도록 한다.
+
+    asyncio.gather 를 사용하면 배치 내 요청이 동시에 발사되어
+    aiolimiter 토큰 버킷이 순식간에 소진되고 API rate limit(429)에 걸린다.
+    순차 처리는 rate limiter의 속도 제한(gemini_embed_rpm)이 정확히 적용되도록 보장한다.
     """
 
     def __init__(self, base: GoogleGenerativeAIEmbeddings) -> None:
@@ -54,7 +56,10 @@ class _GeminiEmbeddings(Embeddings):
         return await self._base.aembed_query(text)
 
     async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
-        return list(await asyncio.gather(*[self.aembed_query(t) for t in texts]))
+        results = []
+        for text in texts:
+            results.append(await self.aembed_query(text))
+        return results
 
 
 def get_chat_model(
