@@ -14,6 +14,12 @@ uv run python scripts/embed_metadata.py --all
 
 # 건수 지정
 uv run python scripts/embed_metadata.py --limit 500
+
+# 증분 적재 (service_embeddings에 없는 service_id만)
+uv run python scripts/embed_metadata.py --incremental
+
+# 전량 + 증분 조합 (전체 조회 후 기존 제외)
+uv run python scripts/embed_metadata.py --all --incremental
 """
 
 import argparse
@@ -88,7 +94,7 @@ def _build_metadata(row: dict) -> dict:
 _BATCH_SIZE = 20  # 임베딩 API 병렬 호출 단위 (rate limit 고려)
 
 
-async def run(limit: int | None) -> None:
+async def run(limit: int | None, incremental: bool = False) -> None:
     on_data_engine = create_async_engine(settings.on_data_database_url, echo=False)
     on_ai_engine = create_async_engine(
         settings.on_ai_database_url,
@@ -106,6 +112,19 @@ async def run(limit: int | None) -> None:
     if not rows:
         logger.info("적재할 데이터가 없습니다.")
         return
+
+    if incremental:
+        async with OnAiSession() as ai_session:
+            existing_ids = await _fetch_existing_service_ids(ai_session)
+
+        before_count = len(rows)
+        rows = [r for r in rows if r["service_id"] not in existing_ids]
+        excluded_count = before_count - len(rows)
+        logger.info("기존 %d건 제외, %d건 신규 임베딩", excluded_count, len(rows))
+
+        if not rows:
+            logger.info("신규 데이터가 없습니다.")
+            return
 
     logger.info("총 %d건 처리 시작", len(rows))
 
@@ -128,6 +147,12 @@ async def run(limit: int | None) -> None:
     logger.info("완료: %d건 적재", len(rows))
     await on_data_engine.dispose()
     await on_ai_engine.dispose()
+
+
+async def _fetch_existing_service_ids(session: AsyncSession) -> set[str]:
+    """on_ai.service_embeddings에서 이미 적재된 service_id 집합을 조회한다."""
+    result = await session.execute(text("SELECT service_id FROM service_embeddings"))
+    return {row[0] for row in result.fetchall()}
 
 
 async def _fetch_rows(session: AsyncSession, limit: int | None) -> list[dict]:
@@ -202,6 +227,11 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="적재할 최대 건수",
     )
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="service_embeddings에 없는 service_id만 임베딩 (신규 데이터 전용)",
+    )
     return parser.parse_args()
 
 
@@ -215,4 +245,4 @@ if __name__ == "__main__":
     else:
         limit = 100  # seed 기본값
 
-    asyncio.run(run(limit))
+    asyncio.run(run(limit, incremental=args.incremental))
