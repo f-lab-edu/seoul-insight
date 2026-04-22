@@ -3,9 +3,8 @@
 DB와 LLM을 모두 Mock으로 대체하여 라우팅 → 검색 → 답변 전체 흐름을 검증한다.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 
 from agents.answer_agent import AnswerAgent, _AnswerOutput, _TitleOutput
 from agents.router_agent import RouterAgent, _IntentOutput
@@ -63,6 +62,12 @@ def _make_sql_agent(rows: list[dict]) -> tuple[SqlAgent, MagicMock]:
 
 
 def _make_vector_agent(rows: list[dict]) -> tuple[VectorAgent, MagicMock]:
+    """VectorAgent와 on_ai DB mock 세션을 반환한다.
+
+    반환된 세션은 워크플로우에서 ai_session으로 주입해야 한다.
+    (service_embeddings는 on_ai DB에 존재)
+    commit mock이 포함되어 trace 저장도 처리한다.
+    """
     agent = VectorAgent.__new__(VectorAgent)
 
     refine_chain = MagicMock()
@@ -78,6 +83,7 @@ def _make_vector_agent(rows: list[dict]) -> tuple[VectorAgent, MagicMock]:
     mock_result.fetchall.return_value = [tuple(r.values()) for r in rows]
     session = MagicMock()
     session.execute = AsyncMock(return_value=mock_result)
+    session.commit = AsyncMock()  # trace 저장 시 commit 필요
     return agent, session
 
 
@@ -178,9 +184,12 @@ class TestSqlWorkflow:
 
 class TestVectorWorkflow:
     async def test_vector_search_end_to_end(self):
-        """VECTOR_SEARCH: router → vector_agent → answer 전체 흐름 검증."""
+        """VECTOR_SEARCH: router → vector_agent → answer 전체 흐름 검증.
+
+        VectorAgent는 service_embeddings가 있는 on_ai DB(ai_session)를 사용한다.
+        """
         rows = [{"service_id": "V001", "service_name": "체험관", "similarity": 0.9}]
-        vector_agent, data_session = _make_vector_agent(rows)
+        vector_agent, ai_session = _make_vector_agent(rows)
 
         workflow = AgentWorkflow(
             router=_make_router(IntentType.VECTOR_SEARCH),
@@ -189,8 +198,8 @@ class TestVectorWorkflow:
         )
         result = await workflow.run(
             _make_state(message="아이랑 체험할 수 있는 곳"),
-            data_session=data_session,
-            ai_session=_make_ai_session(),
+            data_session=MagicMock(),  # VECTOR_SEARCH에서 사용 안 함
+            ai_session=ai_session,
         )
 
         assert result["intent"] == IntentType.VECTOR_SEARCH
@@ -199,7 +208,7 @@ class TestVectorWorkflow:
 
     async def test_vector_search_trace_includes_vector_node(self):
         """VECTOR_SEARCH trace의 node_path에 vector_agent가 포함된다."""
-        vector_agent, data_session = _make_vector_agent([])
+        vector_agent, ai_session = _make_vector_agent([])
 
         workflow = AgentWorkflow(
             router=_make_router(IntentType.VECTOR_SEARCH),
@@ -208,11 +217,32 @@ class TestVectorWorkflow:
         )
         result = await workflow.run(
             _make_state(),
-            data_session=data_session,
-            ai_session=_make_ai_session(),
+            data_session=MagicMock(),  # VECTOR_SEARCH에서 사용 안 함
+            ai_session=ai_session,
         )
 
         assert "vector_agent" in result["trace"]["node_path"]
+
+    async def test_vector_agent_receives_ai_session(self):
+        """VectorAgent가 data_session이 아닌 ai_session을 받는지 검증한다."""
+        vector_agent, ai_session = _make_vector_agent([])
+
+        workflow = AgentWorkflow(
+            router=_make_router(IntentType.VECTOR_SEARCH),
+            vector_agent=vector_agent,
+            answer_agent=_make_answer_agent(),
+        )
+        data_session = MagicMock()
+        data_session.execute = AsyncMock()  # 이 mock이 호출되면 안 된다
+
+        await workflow.run(
+            _make_state(),
+            data_session=data_session,
+            ai_session=ai_session,
+        )
+
+        # VectorAgent의 DB 조회는 ai_session으로만 이루어져야 한다
+        data_session.execute.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +363,23 @@ class TestTraceStorage:
         # trace 저장 실패해도 answer는 정상 반환
         assert result["answer"] == "답변"
 
+    async def test_ai_session_commit_is_called_after_trace_insert(self):
+        """trace INSERT 성공 시 ai_session.commit()이 호출된다."""
+        _, data_session = _make_sql_agent([])
+        ai_session = _make_ai_session()
+
+        workflow = AgentWorkflow(
+            router=_make_router(IntentType.FALLBACK),
+            answer_agent=_make_answer_agent(),
+        )
+        await workflow.run(
+            _make_state(),
+            data_session=data_session,
+            ai_session=ai_session,
+        )
+
+        ai_session.commit.assert_called_once()
+
     async def test_state_preserved_across_workflow(self):
         """워크플로우는 room_id, message_id 등 초기 state 필드를 보존한다."""
         _, data_session = _make_sql_agent([])
@@ -376,6 +423,9 @@ class TestWorkflowErrorHandling:
 
         assert result["error"] is not None
         assert "LLM 타임아웃" in result["error"]
+        # 오류 발생 시에도 fallback 답변이 채워져야 한다
+        assert result["answer"] is not None
+        assert len(result["answer"]) > 0
 
     async def test_error_recorded_in_trace(self):
         """오류 발생 시 trace.node_path에 error가 포함된다."""

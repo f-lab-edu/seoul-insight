@@ -12,7 +12,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from llm.client import get_chat_model, get_embeddings
-from llm.client import _GeminiEmbeddings  # noqa: PLC2701 — 타입 힌트용
 from langchain_core.embeddings import Embeddings
 from schemas.state import AgentState
 
@@ -26,7 +25,7 @@ _REFINE_SYSTEM = """\
 _REFINE_HUMAN = "사용자 질의: {message}"
 
 _TOP_K = 10
-_SCORE_THRESHOLD = 0.4  # 코사인 거리 기준 (낮을수록 유사)
+_MIN_SIMILARITY = 0.6  # 코사인 유사도 하한 (0~1, 높을수록 관련성 높음)
 
 
 class _RefinedQuery(BaseModel):
@@ -84,7 +83,7 @@ class VectorAgent:
             sql,
             {
                 "query_vector": str(query_vector),
-                "threshold": 1 - _SCORE_THRESHOLD,
+                "threshold": _MIN_SIMILARITY,
                 "top_k": _TOP_K,
             },
         )

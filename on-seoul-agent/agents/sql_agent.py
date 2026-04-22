@@ -91,12 +91,13 @@ class SqlAgent:
             bind["keyword"] = f"%{params.keyword}%"
 
         where = " AND ".join(conditions)
+        bind["top_k"] = _TOP_K
         sql = f"""
             SELECT {_RESULT_COLUMNS}
             FROM public_service_reservations
             WHERE {where}
             ORDER BY receipt_start_dt DESC NULLS LAST
-            LIMIT {_TOP_K}
+            LIMIT :top_k
         """
 
         result = await session.execute(text(sql), bind)

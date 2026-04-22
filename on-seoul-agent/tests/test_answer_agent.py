@@ -5,7 +5,6 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 
 from agents.answer_agent import AnswerAgent, _AnswerOutput, _TitleOutput
 from schemas.state import AgentState, IntentType
@@ -130,3 +129,57 @@ class TestAnswerAgent:
 
         assert result["room_id"] == 42
         assert result["message_id"] == 7
+
+    async def test_collect_results_both_none_returns_empty_list(self):
+        """sql_results와 vector_results가 모두 None이면 빈 결과로 답변을 생성한다."""
+        agent = _make_agent("죄송합니다, 조건에 맞는 시설을 찾지 못했습니다.")
+        state = _make_state(sql_results=None, vector_results=None, map_results=None)
+
+        result = await agent.answer(state)
+
+        # answer_chain은 여전히 호출되어야 한다
+        agent._answer_chain.ainvoke.assert_called_once()
+        call_kwargs = agent._answer_chain.ainvoke.call_args[0][0]
+        # 빈 결과 목록 JSON이 전달되어야 한다
+        import json
+        assert json.loads(call_kwargs["results_json"]) == []
+        assert result["answer"] == "죄송합니다, 조건에 맞는 시설을 찾지 못했습니다."
+
+    async def test_normalize_extracts_url_from_metadata_when_row_url_missing(self):
+        """row에 service_url이 없어도 metadata dict에 있으면 metadata URL을 사용한다."""
+        row = {
+            "service_id": "S001",
+            "service_name": "수영장",
+            "service_url": None,
+            "metadata": {"service_url": "https://yeyak.seoul.go.kr/meta/001"},
+        }
+        normalized = AnswerAgent._normalize(row)
+
+        assert normalized["service_url"] == "https://yeyak.seoul.go.kr/meta/001"
+
+    async def test_normalize_parses_metadata_string(self):
+        """metadata가 JSON 문자열이면 파싱 후 service_url을 추출한다."""
+        import json
+
+        meta = json.dumps({"service_url": "https://yeyak.seoul.go.kr/str/001"})
+        row = {"service_id": "S002", "service_name": "체험관", "service_url": None, "metadata": meta}
+        normalized = AnswerAgent._normalize(row)
+
+        assert normalized["service_url"] == "https://yeyak.seoul.go.kr/str/001"
+
+    async def test_collect_results_map_features_unpacked(self):
+        """map_results의 features[].properties가 결과 목록에 포함된다."""
+        agent = _make_agent()
+        map_results = {
+            "features": [
+                {"properties": {"service_name": "체육관A", "area_name": "마포구"}},
+                {"properties": {"service_name": "체육관B", "area_name": "서대문구"}},
+            ]
+        }
+        state = _make_state(map_results=map_results)
+
+        await agent.answer(state)
+
+        results_json = agent._answer_chain.ainvoke.call_args[0][0]["results_json"]
+        assert "체육관A" in results_json
+        assert "체육관B" in results_json

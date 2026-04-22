@@ -3,9 +3,8 @@
 실제 LLM 호출 없이 Mock 체인으로 의도 분류 동작을 검증한다.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 
 from agents.router_agent import RouterAgent
 from schemas.state import AgentState, IntentType

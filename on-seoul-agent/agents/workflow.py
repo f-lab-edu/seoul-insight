@@ -12,8 +12,8 @@
       → AgentState 반환
 
 세션 주입:
-    - data_session : on_data DB (SQL/Vector 검색용)
-    - ai_session   : on_ai DB (trace 저장용)
+    - data_session : on_data DB (SQL 검색용 — SqlAgent)
+    - ai_session   : on_ai DB (Vector 검색 + trace 저장용 — VectorAgent, _save_trace)
     FastAPI 라우터에서 Depends로 주입하거나, 워크플로우 단독 실행 시
     core.database.ai_session_ctx / data_session_ctx 를 사용한다.
 
@@ -68,8 +68,8 @@ class AgentWorkflow:
 
         Args:
             state: 초기 AgentState (room_id, message_id, message, title_needed 필수)
-            data_session: on_data DB 세션 (SQL/Vector 검색)
-            ai_session: on_ai DB 세션 (trace 저장)
+            data_session: on_data DB 세션 (SqlAgent — public_service_reservations 조회)
+            ai_session: on_ai DB 세션 (VectorAgent — service_embeddings 조회, trace 저장)
 
         Returns:
             answer, intent, trace가 채워진 AgentState
@@ -84,15 +84,19 @@ class AgentWorkflow:
             intent: IntentType = state["intent"]
 
             # ── 2. Branch: 의도별 검색 ───────────────────────────────────
-            state = await self._dispatch(state, intent, data_session, node_path)
+            state = await self._dispatch(state, intent, data_session, ai_session, node_path)
 
             # ── 3. Answer: 자연어 답변 생성 ──────────────────────────────
             state = await self._answer.answer(state)
             node_path.append("answer")
 
         except Exception as exc:
-            logger.exception("워크플로우 실행 중 오류: %s", exc)
-            state = {**state, "error": str(exc)}
+            logger.exception("워크플로우 실행 중 오류")
+            state = {
+                **state,
+                "error": str(exc),
+                "answer": "죄송합니다, 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+            }
             node_path.append("error")
 
         finally:
@@ -114,16 +118,22 @@ class AgentWorkflow:
         self,
         state: AgentState,
         intent: IntentType,
-        session: AsyncSession,
+        data_session: AsyncSession,
+        ai_session: AsyncSession,
         node_path: list[str],
     ) -> AgentState:
-        """의도에 따라 적절한 Agent를 호출한다."""
+        """의도에 따라 적절한 Agent를 호출한다.
+
+        DB 세션 라우팅:
+          SQL_SEARCH    → data_session (on_data — public_service_reservations)
+          VECTOR_SEARCH → ai_session   (on_ai  — service_embeddings)
+        """
         if intent == IntentType.SQL_SEARCH:
-            state = await self._sql.search(state, session)
+            state = await self._sql.search(state, data_session)
             node_path.append("sql_agent")
 
         elif intent == IntentType.VECTOR_SEARCH:
-            state = await self._vector.search(state, session)
+            state = await self._vector.search(state, ai_session)
             node_path.append("vector_agent")
 
         elif intent == IntentType.MAP:

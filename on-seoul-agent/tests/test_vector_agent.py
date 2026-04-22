@@ -5,7 +5,6 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 
 from agents.vector_agent import VectorAgent, _RefinedQuery
 from schemas.state import AgentState, IntentType
@@ -109,3 +108,23 @@ class TestVectorAgent:
 
         bind = session.execute.call_args[0][1]
         assert bind["query_vector"] == str(vector)
+
+    async def test_search_returns_empty_vector_results_when_no_rows(self):
+        """DB 조회 결과가 없으면 vector_results는 빈 리스트다 (None이 아님)."""
+        agent, session = _make_agent("정제된 쿼리", [0.1], [])
+
+        result = await agent.search(_make_state(), session)
+
+        assert result["vector_results"] == []
+        assert result["vector_results"] is not None
+
+    async def test_similarity_search_passes_threshold_and_top_k(self):
+        """DB execute에 threshold와 top_k 파라미터가 전달된다."""
+        from agents.vector_agent import _MIN_SIMILARITY, _TOP_K
+
+        agent, session = _make_agent("쿼리", [0.1], [])
+        await agent.search(_make_state(), session)
+
+        bind = session.execute.call_args[0][1]
+        assert bind["threshold"] == _MIN_SIMILARITY
+        assert bind["top_k"] == _TOP_K
