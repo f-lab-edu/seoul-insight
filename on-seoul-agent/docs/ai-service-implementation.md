@@ -54,11 +54,11 @@ FastAPI + LangChain 기반 멀티에이전트 서비스 구현 순서.
 
 ### Phase 5. LangChain Agent 구현
 
-- [ ] `agents/router_agent.py` — LCEL 기반 의도 분류 체인 (`SQL_SEARCH` / `VECTOR_SEARCH` / `MAP` / `FALLBACK`)
-- [ ] `agents/sql_agent.py` — `on_data_reader` 계정으로 `public_service_reservations` 조회
-- [ ] `agents/vector_agent.py` — `on_ai_app` 계정으로 `service_embeddings` 유사도 검색
-- [ ] `agents/answer_agent.py` — 결과 요약 및 시설 카드 가공. `is_title_generated`가 false인 경우 제목 요약 생성 로직 포함
-- [ ] 각 Agent 단위 테스트 (Mock LLM / Mock DB) 구현 
+- [x] `agents/router_agent.py` — LCEL 기반 의도 분류 체인 (`SQL_SEARCH` / `VECTOR_SEARCH` / `MAP` / `FALLBACK`)
+- [x] `agents/sql_agent.py` — `on_data_reader` 계정으로 `public_service_reservations` 조회
+- [x] `agents/vector_agent.py` — `on_ai_app` 계정으로 `service_embeddings` 유사도 검색
+- [x] `agents/answer_agent.py` — 결과 요약 및 시설 카드 가공. `title_needed=True`인 경우 제목 요약 생성 로직 포함
+- [x] 각 Agent 단위 테스트 (Mock LLM / Mock DB) 구현 
 
 ### Phase 6. LangChain 워크플로우 구축
 
