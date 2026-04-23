@@ -26,6 +26,8 @@ def _make_state(**kwargs) -> AgentState:
         message="수영장 알려줘",
         title_needed=False,
         intent=None,
+        lat=None,
+        lng=None,
         refined_query=None,
         sql_results=None,
         vector_results=None,
@@ -293,27 +295,50 @@ class TestFallbackWorkflow:
 
 
 # ---------------------------------------------------------------------------
-# MAP 흐름 (stub)
+# MAP 흐름
 # ---------------------------------------------------------------------------
 
 
 class TestMapWorkflow:
-    async def test_map_intent_stub_proceeds_to_answer(self):
-        """MAP intent는 map_search 미구현 상태에서 answer_agent로 진행한다."""
+    async def test_map_intent_without_coords_falls_back(self):
+        """MAP intent에서 lat/lng가 없으면 map_fallback으로 대체된다."""
         _, data_session = _make_sql_agent([])
         workflow = AgentWorkflow(
             router=_make_router(IntentType.MAP),
-            answer_agent=_make_answer_agent("지도 서비스는 준비 중입니다."),
+            answer_agent=_make_answer_agent("위치 정보가 없어 검색할 수 없습니다."),
         )
         result = await workflow.run(
-            _make_state(message="내 주변 체육관 지도로 보여줘"),
+            _make_state(message="내 주변 체육관 지도로 보여줘"),  # lat/lng=None
             data_session=data_session,
             ai_session=_make_ai_session(),
         )
 
         assert result["intent"] == IntentType.MAP
-        assert result["answer"] == "지도 서비스는 준비 중입니다."
-        assert "map_stub" in result["trace"]["node_path"]
+        assert result["map_results"] is None
+        assert "map_fallback" in result["trace"]["node_path"]
+
+    async def test_map_intent_with_coords_calls_map_search(self):
+        """MAP intent에서 lat/lng가 있으면 map_search가 호출되고 map_results가 채워진다."""
+        from unittest.mock import patch
+
+        geojson = {"type": "FeatureCollection", "features": []}
+        _, data_session = _make_sql_agent([])
+
+        with patch("agents.workflow.map_search", return_value=geojson) as mock_search:
+            workflow = AgentWorkflow(
+                router=_make_router(IntentType.MAP),
+                answer_agent=_make_answer_agent("주변 시설 목록입니다."),
+            )
+            result = await workflow.run(
+                _make_state(lat=37.5665, lng=126.9780),
+                data_session=data_session,
+                ai_session=_make_ai_session(),
+            )
+
+        assert result["intent"] == IntentType.MAP
+        assert result["map_results"] == geojson
+        assert "map_search" in result["trace"]["node_path"]
+        mock_search.assert_awaited_once_with(data_session, 37.5665, 126.9780)
 
 
 # ---------------------------------------------------------------------------
