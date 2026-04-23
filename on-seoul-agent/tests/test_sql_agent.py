@@ -17,6 +17,8 @@ def _make_state(message: str = "수영장 알려줘") -> AgentState:
         message=message,
         title_needed=False,
         intent=IntentType.SQL_SEARCH,
+        lat=None,
+        lng=None,
         refined_query=None,
         sql_results=None,
         vector_results=None,
@@ -108,7 +110,7 @@ class TestSqlAgent:
 
     async def test_query_no_extra_filter_when_params_empty(self):
         """파라미터가 모두 None이면 deleted_at IS NULL 조건만 포함되고, top_k만 bind된다."""
-        from agents.sql_agent import _TOP_K
+        from tools.sql_search import TOP_K as _TOP_K
 
         agent, session = _make_agent(_SqlParams(), [])
         await agent.search(_make_state(), session)
