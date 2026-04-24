@@ -49,11 +49,22 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         OAuth2User oauth2User = oauthToken.getPrincipal();
         String provider = oauthToken.getAuthorizedClientRegistrationId();
 
-        String providerId = oauth2User.getAttribute("sub") != null
+        Object idAttr = oauth2User.getAttribute("sub") != null
                 ? oauth2User.getAttribute("sub")
-                : String.valueOf(oauth2User.getAttribute("id"));
-        String email = oauth2User.getAttribute("email");
-        String nickname = oauth2User.getAttribute("name");
+                : oauth2User.getAttribute("id");
+        String providerId = idAttr != null ? idAttr.toString() : null;
+
+        String email;
+        String nickname;
+        if ("kakao".equals(provider)) {
+            Map<String, Object> kakaoAccount = oauth2User.getAttribute("kakao_account");
+            Map<String, Object> properties = oauth2User.getAttribute("properties");
+            email    = kakaoAccount != null ? (String) kakaoAccount.get("email") : null;
+            nickname = properties   != null ? (String) properties.get("nickname") : null;
+        } else {
+            email    = oauth2User.getAttribute("email");
+            nickname = oauth2User.getAttribute("name");
+        }
 
         User user = userRepository.findByProviderAndProviderId(provider, providerId)
                 .map(existing -> {
