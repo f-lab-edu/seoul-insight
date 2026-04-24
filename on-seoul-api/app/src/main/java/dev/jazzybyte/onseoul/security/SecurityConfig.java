@@ -1,25 +1,74 @@
 package dev.jazzybyte.onseoul.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.jazzybyte.onseoul.security.jwt.JwtAuthenticationFilter;
+import dev.jazzybyte.onseoul.security.jwt.JwtProvider;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private final JwtProvider jwtProvider;
+    private final OAuth2LoginSuccessHandler oauth2LoginSuccessHandler;
+    private final ObjectMapper objectMapper;
+
+    public SecurityConfig(final JwtProvider jwtProvider,
+                          final OAuth2LoginSuccessHandler oauth2LoginSuccessHandler,
+                          final ObjectMapper objectMapper) {
+        this.jwtProvider = jwtProvider;
+        this.oauth2LoginSuccessHandler = oauth2LoginSuccessHandler;
+        this.objectMapper = objectMapper;
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        // TODO(Phase 13): JWT 필터 + OAuth2 로그인 구현 후 anyRequest().authenticated()로 교체
         http
-            .csrf(AbstractHttpConfigurer::disable)
-            .authorizeHttpRequests(auth -> auth
-                .anyRequest().permitAll()
-            );
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/auth/**").permitAll()
+                        .anyRequest().authenticated()
+                )
+                .oauth2Login(oauth2 ->
+                        oauth2.successHandler(oauth2LoginSuccessHandler)
+                )
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) ->
+                                writeErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
+                                        "UNAUTHORIZED", "인증이 필요합니다."))
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                                writeErrorResponse(response, HttpServletResponse.SC_FORBIDDEN,
+                                        "FORBIDDEN", "접근 권한이 없습니다."))
+                )
+                .addFilterBefore(new JwtAuthenticationFilter(jwtProvider),
+                        UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    private void writeErrorResponse(HttpServletResponse response, int status,
+                                    String code, String message) {
+        try {
+            response.setStatus(status);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            objectMapper.writeValue(response.getWriter(), Map.of("code", code, "message", message));
+        } catch (Exception ignored) {
+        }
     }
 }
