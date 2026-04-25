@@ -91,7 +91,7 @@ def _build_metadata(row: dict) -> dict:
 # 메인 로직
 # ---------------------------------------------------------------------------
 
-_BATCH_SIZE = 20  # 임베딩 API 병렬 호출 단위 (rate limit 고려)
+_BATCH_SIZE = 20  # 배치 커밋 단위 (aembed_documents는 순차 처리)
 
 
 async def run(limit: int | None, incremental: bool = False) -> None:
@@ -101,52 +101,61 @@ async def run(limit: int | None, incremental: bool = False) -> None:
         echo=False,
         connect_args={"statement_cache_size": 0},  # pgvector + asyncpg prepared statement 호환성
     )
-    OnDataSession = async_sessionmaker(on_data_engine, expire_on_commit=False)
-    OnAiSession = async_sessionmaker(on_ai_engine, expire_on_commit=False)
+    try:
+        OnDataSession = async_sessionmaker(on_data_engine, expire_on_commit=False)
+        OnAiSession = async_sessionmaker(on_ai_engine, expire_on_commit=False)
 
-    embeddings = get_embeddings()
+        embeddings = get_embeddings()
 
-    async with OnDataSession() as data_session:
-        rows = await _fetch_rows(data_session, limit)
-
-    if not rows:
-        logger.info("적재할 데이터가 없습니다.")
-        return
-
-    if incremental:
-        async with OnAiSession() as ai_session:
-            existing_ids = await _fetch_existing_service_ids(ai_session)
-
-        before_count = len(rows)
-        rows = [r for r in rows if r["service_id"] not in existing_ids]
-        excluded_count = before_count - len(rows)
-        logger.info("기존 %d건 제외, %d건 신규 임베딩", excluded_count, len(rows))
+        async with OnDataSession() as data_session:
+            rows = await _fetch_rows(data_session, limit)
 
         if not rows:
-            logger.info("신규 데이터가 없습니다.")
+            logger.info("적재할 데이터가 없습니다.")
             return
 
-    logger.info("총 %d건 처리 시작", len(rows))
+        if incremental:
+            async with OnAiSession() as ai_session:
+                existing_ids = await _fetch_existing_service_ids(ai_session)
 
-    async with OnAiSession() as ai_session:
-        for batch_start in range(0, len(rows), _BATCH_SIZE):
-            batch = rows[batch_start : batch_start + _BATCH_SIZE]
-            documents = [_build_document(r) for r in batch]
+            before_count = len(rows)
+            rows = [r for r in rows if r["service_id"] not in existing_ids]
+            excluded_count = before_count - len(rows)
+            logger.info("기존 %d건 제외, %d건 신규 임베딩", excluded_count, len(rows))
 
-            vectors = await embeddings.aembed_documents(documents)
+            if not rows:
+                logger.info("신규 데이터가 없습니다.")
+                return
 
-            await _upsert_batch(ai_session, batch, vectors)
-            await ai_session.commit()
+        logger.info("총 %d건 처리 시작", len(rows))
 
-            logger.info(
-                "진행: %d / %d",
-                min(batch_start + _BATCH_SIZE, len(rows)),
-                len(rows),
-            )
+        async with OnAiSession() as ai_session:
+            for batch_start in range(0, len(rows), _BATCH_SIZE):
+                batch = rows[batch_start : batch_start + _BATCH_SIZE]
+                batch_end = min(batch_start + _BATCH_SIZE, len(rows))
+                documents = [_build_document(r) for r in batch]
+                try:
+                    vectors = await embeddings.aembed_documents(documents)
+                    await _upsert_batch(ai_session, batch, vectors)
+                    await ai_session.commit()
+                except Exception:
+                    await ai_session.rollback()
+                    logger.exception(
+                        "배치 실패 (rows %d–%d), 롤백 후 중단",
+                        batch_start + 1,
+                        batch_end,
+                    )
+                    raise
 
-    logger.info("완료: %d건 적재", len(rows))
-    await on_data_engine.dispose()
-    await on_ai_engine.dispose()
+                logger.info("진행: %d / %d", batch_end, len(rows))
+
+        logger.info("완료: %d건 적재", len(rows))
+    except Exception:
+        logger.exception("임베딩 적재 실패")
+        raise
+    finally:
+        await on_data_engine.dispose()
+        await on_ai_engine.dispose()
 
 
 async def _fetch_existing_service_ids(session: AsyncSession) -> set[str]:
@@ -249,4 +258,7 @@ if __name__ == "__main__":
     else:
         limit = 100  # seed 기본값
 
-    asyncio.run(run(limit, incremental=args.incremental))
+    try:
+        asyncio.run(run(limit, incremental=args.incremental))
+    except Exception:
+        sys.exit(1)
