@@ -5,6 +5,7 @@ from functools import wraps
 from typing import Any
 
 from aiolimiter import AsyncLimiter
+from google.api_core.exceptions import ResourceExhausted
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
@@ -76,10 +77,10 @@ class _GeminiEmbeddings(Embeddings):
         self._limiter = limiter if limiter is not None else _gemini_embed_limiter
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return self._base.embed_documents(texts)
+        raise NotImplementedError("Use aembed_documents — sync path has no rate limiting.")
 
     def embed_query(self, text: str) -> list[float]:
-        return self._base.embed_query(text)
+        raise NotImplementedError("Use aembed_query — sync path has no rate limiting.")
 
     async def _aembed_once(self, text: str) -> list[float]:
         """rate-limited 단일 API 호출. aembed_query 의 retry 진입점."""
@@ -92,7 +93,7 @@ class _GeminiEmbeddings(Embeddings):
             try:
                 return await self._aembed_once(text)
             except Exception as exc:
-                is_rate_limit = "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc)
+                is_rate_limit = isinstance(exc, ResourceExhausted)
                 if is_rate_limit and attempt < _EMBED_MAX_RETRIES - 1:
                     delay = _EMBED_RETRY_BASE_DELAY * (2**attempt)
                     logger.warning(
