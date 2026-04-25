@@ -105,14 +105,14 @@ FastAPI + LangChain 기반 멀티에이전트 서비스 구현 순서.
 
 ### Phase 11. Tools (Domain Logic)
 
-- [ ] `tools/sql_search.py` — 카테고리/지역/날짜 필터를 SQL Query로 변환 및 실행
-- [ ] `tools/map_search.py` — `coord_x/y` 기준 반경 검색 (PostgreSQL earthdistance/cube 활용)
-- [ ] `tools/vector_search.py` 와 Agent 연동 검증 (Epic 3 산출물 재사용)
+- [x] `tools/sql_search.py` — 카테고리/지역/날짜 필터를 SQL Query로 변환 및 실행
+- [x] `tools/map_search.py` — `coord_x/y` 기준 반경 검색 (PostgreSQL earthdistance/cube 활용)
+- [x] `tools/vector_search.py` 와 Agent 연동 검증 (Epic 3 산출물 재사용)
 
 ### Phase 12. API 엔드포인트
 
-- [ ] `routers/chat.py` — `POST /chat/stream` (room_id/message_id 수신 → LangChain 워크플로우 실행 → SSE 스트리밍)
-- [ ] `main.py`에 라우터 등록 및 전역 에러 핸들러 구성
+- [x] `routers/chat.py` — `POST /chat/stream` (room_id/message_id 수신 → LangChain 워크플로우 실행 → SSE 스트리밍)
+- [x] `main.py`에 라우터 등록 및 전역 에러 핸들러 구성
 
 ---
 
@@ -121,9 +121,9 @@ FastAPI + LangChain 기반 멀티에이전트 서비스 구현 순서.
 
 ### Phase 13. 관측가능성 (Observability)
 
-- [ ] Redis 연결 설정 (Agent 응답 캐싱 및 Rate Limiting)
-- [ ] `middleware/metrics.py` — 요청별 지연시간 및 토큰 사용량 측정
-- [ ] `chat_agent_traces` 저장 데이터 검증 (라우팅 결과/도구 호출/응답 스니펫 정합성)
+- [x] Redis 연결 설정 (Agent 응답 캐싱 및 Rate Limiting)
+- [x] `middleware/metrics.py` — 요청별 지연시간 및 토큰 사용량 측정
+- [x] `chat_agent_traces` 저장 데이터 검증 (라우팅 결과/도구 호출/응답 스니펫 정합성)
 
 ### Phase 14. 통합 테스트 및 최적화
 
