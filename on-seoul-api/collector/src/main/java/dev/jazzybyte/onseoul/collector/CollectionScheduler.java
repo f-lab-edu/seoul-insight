@@ -1,4 +1,4 @@
-package dev.jazzybyte.onseoul.adapter.in.scheduler;
+package dev.jazzybyte.onseoul.collector;
 
 import dev.jazzybyte.onseoul.domain.port.in.CollectDatasetUseCase;
 import lombok.RequiredArgsConstructor;
