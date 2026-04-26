@@ -1,6 +1,8 @@
-# app 모듈
+# bootstrap 모듈
 
-Spring Boot 부트스트랩 모듈입니다. `OnSeoulApiApplication.java`와 `application.yml`만 포함하며, 실제 비즈니스 로직은 `application` 모듈과 `adapter` 모듈에 위치합니다.
+Web API 전용 Spring Boot 부트스트랩 모듈입니다. `OnSeoulApiApplication.java`와 `application.yml`만 포함하며, 실제 비즈니스 로직은 `application` 모듈과 `adapter` 모듈에 위치합니다.
+
+> 수집 배치(`@Scheduled`)는 `collector` 모듈이 담당합니다. 두 부트는 동일한 헥사고날 코어(`domain/application/adapter`)를 공유합니다.
 
 **의존**: `adapter` → `application` → `domain` (헥사고날 아키텍처)
 
@@ -56,25 +58,22 @@ sequenceDiagram
 | 클래스 | 역할 |
 |---|---|
 | `AuthController` | `POST /auth/token/refresh`, `POST /auth/logout` |
-| `CollectionController` | `POST /admin/collection/trigger` |
+| `CollectionController` | `POST /admin/collection/trigger` (수동 수집 트리거) |
+| `ChatController` | `POST /query` — AI 서비스 SSE 릴레이 |
 | `GlobalExceptionHandler` | `@RestControllerAdvice` — OnSeoulApiException → JSON |
-
-### adapter/in/scheduler/
-
-| 클래스 | 역할 |
-|---|---|
-| `CollectionScheduler` | `@Scheduled` 매일 08시 → `CollectDatasetUseCase` 호출 |
 
 ### adapter/out/
 
 | 패키지 | 구현 포트 |
 |---|---|
 | `persistence/user/` | `LoadUserPort`, `SaveUserPort` |
+| `persistence/chat/` | `SaveChatRoomPort`, `LoadChatRoomPort`, `SaveChatMessagePort` |
 | `persistence/reservation/` | `LoadPublicServicePort`, `SavePublicServicePort` |
 | `persistence/collection/` | `SaveCollectionHistoryPort`, `SaveServiceChangeLogPort` |
 | `redis/` | `RefreshTokenStorePort` |
 | `seoulapi/` | `SeoulDatasetFetchPort` |
 | `kakao/` | `GeocodingPort` |
+| `aiservice/` | AI 서비스 `/chat/stream` WebClient 호출 |
 
 ### application/service/
 
@@ -84,6 +83,7 @@ sequenceDiagram
 | `RefreshTokenService` | `RefreshTokenUseCase` — RT 검증 + Token Rotation |
 | `LogoutService` | `LogoutUseCase` — RT 삭제 |
 | `CollectDatasetService` | `CollectDatasetUseCase` — 서울 Open API 수집 + upsert |
+| `SendQueryService` | `SendQueryUseCase` — ChatRoom/ChatMessage 이력 저장 |
 
 ---
 
@@ -121,6 +121,8 @@ sequenceDiagram
 | `EXPIRED_TOKEN` | 401 | JWT 만료 |
 | `INVALID_TOKEN` | 401 | JWT 변조 / 잘못된 형식 |
 | `INVALID_REFRESH_TOKEN` | 401 | Redis에 없는 Refresh Token |
+| `AI_SERVICE_ERROR` | 502 | AI 서비스 호출 오류 |
+| `CHAT_ROOM_NOT_FOUND` | 404 | 존재하지 않는 대화방 |
 
 ---
 
@@ -145,6 +147,11 @@ jwt:
   secret: ${JWT_SECRET}          # Base64 인코딩된 HS256 키 (256비트 이상)
   access-token-minutes: 15
   refresh-token-minutes: 10080
+
+ai:
+  service:
+    url: ${AI_SERVICE_URL:http://localhost:8000}
+    stream-timeout-seconds: 120
 ```
 
 **JWT_SECRET 생성:**
@@ -160,8 +167,11 @@ openssl rand -base64 32
 # 전체 빌드
 ./gradlew build
 
-# 개발 서버 실행
-./gradlew :app:bootRun
+# Web API 서버 실행
+./gradlew :bootstrap:bootRun
+
+# 수집 배치 실행 (별도 프로세스)
+./gradlew :collector:bootRun
 
 # 전체 테스트 (ArchUnit 포함)
 ./gradlew test

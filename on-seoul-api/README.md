@@ -47,14 +47,15 @@ on-seoul-api/                        # 루트 (공통 빌드 설정)
 ├── adapter/                         # 모든 어댑터 (Spring/JPA/Redis/WebClient 등 의존)
 │   ├── in/
 │   │   ├── web/                     # REST 컨트롤러, DTO, GlobalExceptionHandler
-│   │   ├── security/                # SecurityConfig, OAuth2LoginSuccessHandler, JwtAuthenticationFilter
-│   │   └── scheduler/               # CollectionScheduler
+│   │   └── security/                # SecurityConfig, OAuth2LoginSuccessHandler, JwtAuthenticationFilter
 │   └── out/
 │       ├── persistence/             # JPA 엔티티 + Repository + PersistenceAdapter
 │       ├── redis/                   # RefreshTokenRedisAdapter
 │       ├── seoulapi/                # SeoulOpenApiAdapter
-│       └── kakao/                   # KakaoGeocodingAdapter
-├── app/                             # 부트스트랩 (OnSeoulApiApplication.java + application.yml)
+│       ├── kakao/                   # KakaoGeocodingAdapter
+│       └── aiservice/               # AiServiceAdapter (AI 서비스 WebClient)
+├── bootstrap/                       # Web API 부트스트랩 (OnSeoulApiApplication.java + application.yml)
+├── collector/                       # 수집 배치 부트스트랩 (CollectorApplication.java + CollectionScheduler)
 ├── docs/                            # 구현 문서
 ├── build.gradle                     # 루트 빌드 설정 (subprojects 공통)
 └── settings.gradle                  # 모듈 선언
@@ -67,14 +68,16 @@ adapter ──▶ application ──▶ domain
    │                          ▲
    └──────────────────────────┘  (adapter.out이 domain.port.out 구현)
 
-app → adapter, application, domain, common
+bootstrap  → adapter, application, domain, common  (Web API 부트)
+collector  → adapter, application, domain, common  (수집 배치 부트)
 ```
 
 - **common**: 프레임워크 의존 없는 공통 유틸(전역 예외). 모든 모듈이 의존 가능.
 - **domain**: Spring/JPA/Redis에 컴파일 의존하지 않는 순수 POJO + 포트 인터페이스.
 - **application**: 유스케이스 구현체. `spring-tx`(@Transactional)만 허용. 어댑터에 의존 금지.
 - **adapter**: 모든 인프라 어댑터. domain 포트를 구현하고 application 유스케이스를 호출함.
-- **app**: Spring Boot 진입점만 담당. 조립(DI)은 Spring이 처리.
+- **bootstrap**: Web API 전용 부트스트랩. 인증·채팅·수집 수동 트리거 엔드포인트를 제공한다.
+- **collector**: 수집 배치 전용 부트스트랩. `@Scheduled` 매일 08시 수집을 담당한다. Web/Security 의존 없음.
 
 ---
 
@@ -116,7 +119,7 @@ cd on-seoul-api
 ./gradlew build
 
 # 개발 서버 실행
-./gradlew :app:bootRun
+./gradlew :bootstrap:bootRun
 
 # 테스트
 ./gradlew test
