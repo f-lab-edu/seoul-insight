@@ -7,13 +7,14 @@
 
 ## 1. 바운디드 컨텍스트 개요
 
-on-seoul은 네 개의 바운디드 컨텍스트로 구성된다.
+on-seoul은 다섯 개의 바운디드 컨텍스트로 구성된다.
 
 | 컨텍스트 | 서비스 | 핵심 모델 |
 |---|---|---|
 | 인증 (Auth) | on-seoul-api | User |
 | 수집 (Collection) | on-seoul-api | ApiSourceCatalog, PublicServiceReservation, CollectionHistory |
 | 채팅 (Chat) | on-seoul-api | ChatRoom, ChatMessage |
+| 알림 (Notification) | on-seoul-api | NotificationSubscription, NotificationTemplate, NotificationDispatch |
 | AI 에이전트 (AI Agent) | on-seoul-agent (외부, on_ai DB) | AgentState, SearchResult, ChatAgentTrace |
 
 ```mermaid
@@ -39,6 +40,13 @@ graph LR
         ChatRoom --o ChatMessage
     end
 
+    subgraph NOTIFICATION["알림 도메인"]
+        direction TB
+        NotificationSubscription["NotificationSubscription\n(AR)"]
+        NotificationTemplate["NotificationTemplate\n(AR)"]
+        NotificationDispatch["NotificationDispatch\n(AR)"]
+    end
+
     subgraph AI["AI 에이전트 도메인 (외부 서비스, on_ai DB)"]
         direction TB
         AgentWorkflow["Router → SQL/Vector/Map\n→ Answer"]
@@ -48,10 +56,12 @@ graph LR
     ChatRoom -. "userId (ID 참조)" .-> User
     CollectionHistory -. "sourceId (ID 참조)" .-> ApiSourceCatalog
     ServiceChangeLog -. "serviceId (자연키 참조)" .-> PublicServiceReservation
-    COLLECTION -. "SSE 스트리밍 / 알림 템플릿" .-> AI
+    NotificationSubscription -. "userId" .-> User
+    NotificationDispatch -. "userId" .-> User
+    NotificationDispatch -. "serviceId (자연키)" .-> PublicServiceReservation
+    COLLECTION -. "변경 이벤트" .-> NOTIFICATION
+    NOTIFICATION -. "알림 템플릿 생성" .-> AI
     ChatAgentTrace -. "messageId\n(논리 참조, DB 다름)" .-> ChatMessage
-
-    style ChatAgentTrace fill:#90EE90,stroke:#228B22
     CHAT -. "SSE 릴레이" .-> AI
 
     style User fill:#90EE90,stroke:#228B22
@@ -59,6 +69,10 @@ graph LR
     style PublicServiceReservation fill:#90EE90,stroke:#228B22
     style CollectionHistory fill:#90EE90,stroke:#228B22
     style ChatRoom fill:#90EE90,stroke:#228B22
+    style NotificationSubscription fill:#90EE90,stroke:#228B22
+    style NotificationTemplate fill:#90EE90,stroke:#228B22
+    style NotificationDispatch fill:#90EE90,stroke:#228B22
+    style ChatAgentTrace fill:#90EE90,stroke:#228B22
 ```
 
 > **AR** = Aggregate Root (애그리거트 루트). 초록색으로 표시.
@@ -80,8 +94,6 @@ classDiagram
         +String email
         +String nickname
         +UserStatus status
-        +OffsetDateTime createdAt
-        +OffsetDateTime updatedAt
         --
         +create(SocialLoginCommand) User
         +updateProfile(email, nickname)
@@ -117,30 +129,23 @@ classDiagram
         +Long id
         +String datasetId
         +String datasetName
-        +String datasetUrl
-        +String apiServicePath
         +boolean active
-        +String tags
-        +LocalDate metaUpdatedAt
-        +LocalDateTime dataUpdatedAt
     }
 
     class CollectionHistory {
         <<AggregateRoot>>
         +Long id
         +Long sourceId
-        +LocalDateTime collectedAt
         +CollectionStatus status
         +int totalFetched
         +int newCount
         +int updatedCount
         +int deletedCount
-        +Integer durationMs
         +String errorMessage
         --
         +create(sourceId) CollectionHistory
-        +complete(total, new, updated, deleted, durationMs)
-        +fail(errorMessage, durationMs)
+        +complete(total, new, updated, deleted)
+        +fail(errorMessage)
         +partial(...)
     }
 
@@ -153,7 +158,6 @@ classDiagram
         +String fieldName
         +String oldValue
         +String newValue
-        +LocalDateTime changedAt
     }
 
     class CollectionStatus {
@@ -174,17 +178,10 @@ classDiagram
         <<AggregateRoot>>
         +Long id
         +String serviceId
-        +String serviceGubun
-        +String maxClassName
-        +String minClassName
         +String serviceName
         +String serviceStatus
-        +String prevServiceStatus
-        +String paymentType
-        +String targetInfo
-        +String serviceUrl
-        +String placeName
         +String areaName
+        +String serviceUrl
         +BigDecimal coordX
         +BigDecimal coordY
         +LocalDateTime receiptStartDt
@@ -196,11 +193,20 @@ classDiagram
         +updateCoords(x, y)
     }
 
+    class ServiceEmbedding {
+        <<Entity>>
+        +Long id
+        +String serviceId
+        +vector embedding
+        +LocalDateTime embeddedAt
+    }
+
     CollectionHistory --> CollectionStatus
     CollectionHistory "1" *-- "0..*" ServiceChangeLog : 수집 실행 시 생성
     ServiceChangeLog --> ChangeType
     CollectionHistory "0..*" ..> ApiSourceCatalog : sourceId (ID 참조)
     ServiceChangeLog "0..*" ..> PublicServiceReservation : serviceId 자연키 참조
+    ServiceEmbedding "0..*" ..> PublicServiceReservation : serviceId 자연키 참조
 ```
 
 **애그리거트별 역할:**
@@ -211,6 +217,7 @@ classDiagram
 | `CollectionHistory` | 수집 실행마다 1개 생성, 종료 시 한 번만 결과 기록 | `durationMs != null`이면 결과 재기록 불가 |
 | `PublicServiceReservation` | 최초 수집 시 INSERT, 이후 upsert. soft delete | `serviceId`(서울 API 자연키) 전역 유일 |
 | `ServiceChangeLog` (CollectionHistory 내부) | CollectionHistory와 동일한 트랜잭션에서 생성 | 생성 후 불변 (audit log) |
+| `ServiceEmbedding` | 수집 후 임베딩 스크립트로 생성/갱신 | `serviceId` 당 임베딩 1건. AI Agent 벡터 검색에서 참조 |
 
 ---
 
@@ -226,8 +233,6 @@ classDiagram
         +Long userId
         +String title
         +boolean titleGenerated
-        +OffsetDateTime createdAt
-        +OffsetDateTime updatedAt
         --
         +create(userId, title) ChatRoom
         +updateTitle(title)
@@ -240,7 +245,6 @@ classDiagram
         +Long seq
         +ChatMessageRole role
         +String content
-        +OffsetDateTime createdAt
         --
         +create(roomId, seq, role, content) ChatMessage
     }
@@ -263,7 +267,105 @@ classDiagram
 
 ---
 
-## 5. AI 에이전트 도메인 (외부 바운디드 컨텍스트)
+## 5. 알림 도메인 (Notification)
+
+서비스 상태 변경(개시·마감 임박 등)을 감지하여 사용자에게 푸시 알림을 발송한다. 메시지 *생성*은 AI Service(`POST /notification/template`)가 담당하고, *발송*은 API Service(FCM)가 담당한다. 네 개의 애그리거트로 구성되며 각각 독립 생명주기를 가진다.
+
+```mermaid
+classDiagram
+    direction TB
+
+    class NotificationSubscription {
+        <<AggregateRoot>>
+        +Long id
+        +Long userId
+        +String category
+        +String areaName
+        +String keyword
+        +Set~NotificationTemplateType~ enabledTypes
+        +boolean active
+        --
+        +create(userId, filter, types) NotificationSubscription
+        +updateFilter(category, area, keyword)
+        +deactivate()
+    }
+
+    class NotificationTemplate {
+        <<AggregateRoot>>
+        +Long id
+        +NotificationTemplateType type
+        +String titleTemplate
+        +String bodyTemplate
+        +boolean active
+        --
+        +render(context) RenderedMessage
+    }
+
+    class NotificationDispatch {
+        <<AggregateRoot>>
+        +Long id
+        +Long userId
+        +Long subscriptionId
+        +Long templateId
+        +String serviceId
+        +NotificationTemplateType type
+        +NotificationDispatchStatus status
+        +String errorMessage
+        --
+        +create(...) NotificationDispatch
+        +markSent(fcmMessageId)
+        +markFailed(errorMessage)
+    }
+
+    class NotificationTemplateType {
+        <<Enumeration>>
+        SERVICE_OPENED
+        DEADLINE_D_MINUS_1
+        DEADLINE_IMMINENT
+    }
+
+    class NotificationDispatchStatus {
+        <<Enumeration>>
+        PENDING
+        SENT
+        FAILED
+    }
+
+    NotificationSubscription --> NotificationTemplateType
+    NotificationDispatch --> NotificationTemplateType
+    NotificationDispatch --> NotificationDispatchStatus
+    NotificationTemplate --> NotificationTemplateType
+    NotificationDispatch ..> NotificationSubscription : subscriptionId (ID 참조)
+    NotificationDispatch ..> NotificationTemplate : templateId (ID 참조)
+    NotificationDispatch ..> User : userId (ID 참조, 인증)
+    NotificationDispatch ..> PublicServiceReservation : serviceId (자연키, 수집)
+    NotificationSubscription ..> User : userId (ID 참조, 인증)
+```
+
+**애그리거트별 역할:**
+
+| 애그리거트 | 생명주기 | 불변 조건 |
+|---|---|---|
+| `NotificationSubscription` | 사용자가 구독 등록 시 생성, 비활성화 가능 | (userId, category, areaName, keyword) 조합 유일 |
+| `NotificationTemplate` | 운영자 정의. `type`별 1건 활성 | `type` 당 `active=true` 한 건만 유효 |
+| `NotificationDispatch` | 발송 시도마다 1개 생성 (audit log) | 생성 후 `status` 외 변경 불가. SENT/FAILED는 종착 상태 |
+
+**메시지 생성 흐름:**
+
+```
+수집 도메인 변경 감지 (서비스 개시 / D-1 / 마감 임박)
+  → NotificationSubscription 매칭 (필터: 카테고리·자치구·키워드)
+  → AI Service (POST /notification/template) — 알림 템플릿 생성 에이전트가 자연어 메시지 생성
+  → NotificationTemplate.render() — 정형 변수 치환 (fallback)
+  → 브라우저 웹 푸시 발송 (단일 클라이언트)
+  → NotificationDispatch 기록
+```
+
+> **AI Service의 역할:** 단순 템플릿 치환을 넘어 시설 정보·예약 URL 등을 조합한 자연어 메시지를 생성한다. AI 호출 실패 시 `NotificationTemplate.render()` 결과로 폴백한다.
+
+---
+
+## 6. AI 에이전트 도메인 (외부 바운디드 컨텍스트)
 
 `on-seoul-agent` (Python FastAPI)가 담당하는 별도 서비스다. 전용 DB(`on_ai`)를 가지며, API Service(`on-seoul-api`)와는 포트 인터페이스로만 통신한다.
 
@@ -278,7 +380,6 @@ classDiagram
         +Long id
         +Long messageId
         +JsonB trace
-        +OffsetDateTime createdAt
     }
 
     class AgentTracePayload {
@@ -320,6 +421,7 @@ graph LR
         Vector["Vector Agent\n유사도 검색"]
         Map["Map Search\n반경 검색"]
         Answer["Answer Agent\n자연어 답변 생성"]
+        NotifyAgent["알림 템플릿 생성 에이전트\n알림 메시지 생성"]
         TraceStore["ChatAgentTrace\n(on_ai DB 저장)"]
 
         Router --> SQL
@@ -328,10 +430,12 @@ graph LR
         SQL --> Answer
         Vector --> Answer
         Answer --> TraceStore
+        Vector -. "ServiceEmbedding\n(on_data DB 벡터 검색)" .-> VectorIndex["ServiceEmbedding\n(on_data DB)"]
     end
 
     AiStreamPort -. "POST /chat/stream\nSSE" .-> Router
-    NotifyPort -. "POST /notification/template" .-> Answer
+    NotifyPort -. "POST /notification/template" .-> NotifyAgent
+    NotifyAgent -. "알림 메시지 반환" .-> NotifyPort
 ```
 
 **인터페이스 계약:**
@@ -339,17 +443,21 @@ graph LR
 | 포트 | 방향 | 프로토콜 | 비고 |
 |---|---|---|---|
 | `AiAgentStreamPort` | API → AI | HTTP SSE (astream_events) | 질문 → 토큰 스트림. 완료 후 messageId 포함 |
-| `AiAgentNotificationTemplatePort` | API → AI | HTTP POST/Response | 변경 이벤트 → 알림 메시지 생성 |
+| `AiAgentNotificationTemplatePort` | API → AI | HTTP POST/Response | 변경 이벤트 → 알림 템플릿 생성 에이전트가 자연어 메시지 생성 후 반환 |
 
 ---
 
-## 6. 크로스 도메인 참조 요약
+## 7. 크로스 도메인 참조 요약
 
 ```mermaid
 graph LR
     ChatRoom["ChatRoom\n(채팅 도메인)"] -. "userId" .-> User["User\n(인증 도메인)"]
     CollectionHistory["CollectionHistory\n(수집 도메인)"] -. "sourceId" .-> ApiSourceCatalog["ApiSourceCatalog\n(수집 도메인)"]
     ServiceChangeLog["ServiceChangeLog\n(수집 도메인)"] -. "serviceId (자연키)" .-> PublicServiceReservation["PublicServiceReservation\n(수집 도메인)"]
+    NotificationSubscription["NotificationSubscription\n(알림 도메인)"] -. "userId" .-> User
+    NotificationDispatch["NotificationDispatch\n(알림 도메인)"] -. "userId" .-> User
+    NotificationDispatch -. "serviceId (자연키)" .-> PublicServiceReservation["PublicServiceReservation\n(수집 도메인)"]
+    ChatAgentTrace["ChatAgentTrace\n(AI 도메인)"] -. "messageId (논리)" .-> ChatMessage["ChatMessage\n(채팅 도메인)"]
 ```
 
 | 참조하는 쪽 | 참조 대상 | 방식 | 이유 |
@@ -357,6 +465,9 @@ graph LR
 | `ChatRoom.userId` | `User` | ID 참조 | 채팅 ↔ 인증 도메인 경계 분리 |
 | `CollectionHistory.sourceId` | `ApiSourceCatalog` | ID 참조 | 수집 이력이 소스 설정에 느슨하게 의존 |
 | `ServiceChangeLog.serviceId` | `PublicServiceReservation` | 자연키(String) | 서울 API의 고유 ID. 도메인 객체 없이 참조 가능 |
+| `NotificationSubscription.userId` | `User` | ID 참조 | 알림 ↔ 인증 도메인 경계 분리 |
+| `NotificationDispatch.userId` | `User` | ID 참조 | 발송 audit log의 수신자 식별 |
+| `NotificationDispatch.serviceId` | `PublicServiceReservation` | 자연키(String) | 알림 트리거가 된 서비스 추적 |
 | `ChatAgentTrace.messageId` | `ChatMessage` | 논리 참조 (DB 다름) | on_ai ↔ on_data 크로스 DB. 물리 FK 불가, GIN 인덱스로 조회 |
 
 > **원칙:** 바운디드 컨텍스트 경계를 넘는 참조는 반드시 ID(또는 자연키)로만 한다. 객체 그래프를 경계 밖으로 노출하지 않는다.
