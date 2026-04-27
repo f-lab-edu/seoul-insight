@@ -48,7 +48,6 @@ app/
 │   ├── AuthService.java                # Refresh Token 검증 + Token Rotation + 로그아웃
 │   └── dto/
 │       ├── TokenResponse.java          # { accessToken, refreshToken }
-│       ├── AccessTokenResponse.java    # { accessToken } (단독 반환용)
 │       └── RefreshRequest.java         # { refreshToken } — @NotBlank 검증
 ├── controller/
 │   └── CollectionController.java       # POST /admin/collection/trigger
