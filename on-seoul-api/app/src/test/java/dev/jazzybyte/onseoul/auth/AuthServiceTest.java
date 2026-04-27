@@ -203,4 +203,16 @@ class AuthServiceTest {
 
         verify(redisTemplate, never()).opsForValue();
     }
+
+    @Test
+    @DisplayName("Access Token을 Refresh Token 자리에 전달하면 Redis 조회 없이 INVALID_TOKEN 예외를 던진다")
+    void refresh_accessTokenPassedAsRefresh_throwsBeforeRedis() {
+        String accessToken = jwtProvider.generateAccessToken(42L);
+
+        assertThatThrownBy(() -> authService.refresh(accessToken))
+                .isInstanceOf(OnSeoulApiException.class)
+                .hasMessageContaining("Refresh Token이 아닙니다");
+
+        verify(redisTemplate, never()).opsForValue();
+    }
 }

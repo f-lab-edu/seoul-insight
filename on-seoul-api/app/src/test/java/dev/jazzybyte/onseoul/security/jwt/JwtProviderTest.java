@@ -71,4 +71,38 @@ class JwtProviderTest {
 
         assertThat(userId).isEqualTo(99L);
     }
+
+    @Test
+    @DisplayName("Access Token은 extractUserIdSafely에서 userId를 반환한다")
+    void extractUserIdSafely_accessToken_returnsUserId() {
+        String token = jwtProvider.generateAccessToken(42L);
+
+        assertThat(jwtProvider.extractUserIdSafely(token)).contains(42L);
+    }
+
+    @Test
+    @DisplayName("Refresh Token은 extractUserIdSafely에서 empty를 반환한다 — 필터 오용 방지")
+    void extractUserIdSafely_refreshToken_returnsEmpty() {
+        String refreshToken = jwtProvider.generateRefreshToken(42L);
+
+        assertThat(jwtProvider.extractUserIdSafely(refreshToken)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Refresh Token은 extractUserIdFromRefreshToken에서 userId를 반환한다")
+    void extractUserIdFromRefreshToken_validRefreshToken_returnsUserId() {
+        String refreshToken = jwtProvider.generateRefreshToken(99L);
+
+        assertThat(jwtProvider.extractUserIdFromRefreshToken(refreshToken)).isEqualTo(99L);
+    }
+
+    @Test
+    @DisplayName("Access Token을 extractUserIdFromRefreshToken에 전달하면 INVALID_TOKEN 예외가 발생한다")
+    void extractUserIdFromRefreshToken_accessToken_throwsInvalidToken() {
+        String accessToken = jwtProvider.generateAccessToken(99L);
+
+        assertThatThrownBy(() -> jwtProvider.extractUserIdFromRefreshToken(accessToken))
+                .isInstanceOf(OnSeoulApiException.class)
+                .hasMessageContaining("Refresh Token이 아닙니다");
+    }
 }

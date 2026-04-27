@@ -44,8 +44,7 @@ public class AuthService {
      * @return 새로 발급된 AccessToken + RefreshToken 쌍
      */
     public TokenResponse refresh(String refreshToken) {
-        jwtProvider.validateToken(refreshToken);
-        Long userId = jwtProvider.extractUserId(refreshToken);
+        Long userId = jwtProvider.extractUserIdFromRefreshToken(refreshToken);
 
         String redisKey = "RT:" + userId;
         String stored = redisTemplate.opsForValue().get(redisKey);
