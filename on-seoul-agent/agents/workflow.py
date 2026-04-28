@@ -6,7 +6,7 @@
       → 의도별 분기
           SQL_SEARCH    → SqlAgent → AnswerAgent
           VECTOR_SEARCH → VectorAgent → AnswerAgent
-          MAP           → (stub: map_results 미구현) → AnswerAgent
+          MAP           → map_search(data_session, lat, lng) → AnswerAgent (lat/lng 미제공 시 FALLBACK 대체)
           FALLBACK      → AnswerAgent (검색 생략)
       → chat_agent_traces 적재 (best-effort)
       → AgentState 반환
@@ -35,6 +35,7 @@ from agents.router_agent import RouterAgent
 from agents.sql_agent import SqlAgent
 from agents.vector_agent import VectorAgent
 from schemas.state import AgentState, IntentType
+from tools.map_search import map_search
 
 logger = logging.getLogger(__name__)
 
@@ -137,10 +138,17 @@ class AgentWorkflow:
             node_path.append("vector_agent")
 
         elif intent == IntentType.MAP:
-            # Phase 11에서 map_search 도구 연동 예정.
-            # 현재는 검색 결과 없이 Answer Agent로 진행한다.
-            logger.warning("MAP intent — map_search 미구현, FALLBACK으로 대체")
-            node_path.append("map_stub")
+            lat = state["lat"]
+            lng = state["lng"]
+            if lat is not None and lng is not None:
+                # on_data_reader 계정으로 earthdistance 반경 검색
+                geojson = await map_search(data_session, lat, lng)
+                state = {**state, "map_results": geojson}
+                node_path.append("map_search")
+            else:
+                # 사용자 위치 미전송 → FALLBACK으로 대체
+                logger.warning("MAP intent — lat/lng 미제공, FALLBACK으로 대체")
+                node_path.append("map_fallback")
 
         else:
             # FALLBACK — 검색 생략, Answer Agent에서 일반 안내 메시지 생성
@@ -164,6 +172,8 @@ async def _save_trace(
     저장 실패 시 로그만 남기고 워크플로우 결과에 영향을 주지 않는다.
     """
     try:
+        # 이전 트랜잭션이 failed 상태(VectorAgent 예외 등)일 수 있으므로 선행 rollback.
+        await session.rollback()
         trace_json = json.dumps(trace, ensure_ascii=False, default=str)
         await session.execute(
             text(
@@ -175,3 +185,7 @@ async def _save_trace(
         await session.commit()
     except Exception as exc:
         logger.warning("trace 저장 실패 (message_id=%s): %s", message_id, exc)
+        try:
+            await session.rollback()
+        except Exception:
+            pass

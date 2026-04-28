@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiolimiter import AsyncLimiter
+from google.api_core.exceptions import ResourceExhausted
 
 from core.exceptions import ConfigurationException
 from llm.client import _GeminiEmbeddings, _rate_limited, get_chat_model, get_embeddings
@@ -121,19 +122,17 @@ class TestGeminiEmbeddings:
         base.aembed_query = AsyncMock(return_value=vector or [0.1, 0.2])
         return _GeminiEmbeddings(base, limiter=_FAST_LIMITER)
 
-    # --- 동기 위임 ---
+    # --- 동기 메서드 — NotImplementedError ---
 
-    def test_embed_query_delegates_to_base(self):
-        emb = self._make_embeddings([1.0, 2.0])
-        assert emb.embed_query("text") == [1.0, 2.0]
-        emb._base.embed_query.assert_called_once_with("text")
-
-    def test_embed_documents_delegates_to_base(self):
+    def test_embed_query_raises_not_implemented(self):
         emb = self._make_embeddings()
-        emb._base.embed_documents.return_value = [[0.1], [0.2]]
-        result = emb.embed_documents(["a", "b"])
-        assert result == [[0.1], [0.2]]
-        emb._base.embed_documents.assert_called_once_with(["a", "b"])
+        with pytest.raises(NotImplementedError, match="aembed_query"):
+            emb.embed_query("text")
+
+    def test_embed_documents_raises_not_implemented(self):
+        emb = self._make_embeddings()
+        with pytest.raises(NotImplementedError, match="aembed_documents"):
+            emb.embed_documents(["a", "b"])
 
     # --- 비동기 ---
 
@@ -194,14 +193,14 @@ class TestGeminiEmbeddings:
         assert elapsed >= 1.0, f"rate limit 미적용 — {elapsed:.2f}s 만에 완료됨"
 
     async def test_aembed_query_retries_on_429(self):
-        """429 수신 시 재시도하여 결과를 반환한다."""
+        """ResourceExhausted 수신 시 재시도하여 결과를 반환한다."""
         call_count = 0
 
         async def _fail_once(text: str) -> list[float]:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise Exception("429 RESOURCE_EXHAUSTED: rate limit")
+                raise ResourceExhausted("rate limit exceeded")
             return [0.1, 0.2]
 
         base = MagicMock()
