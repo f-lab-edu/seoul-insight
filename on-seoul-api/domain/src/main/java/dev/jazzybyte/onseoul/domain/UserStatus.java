@@ -8,5 +8,9 @@ package dev.jazzybyte.onseoul.domain;
 public enum UserStatus {
     ACTIVE,
     SUSPENDED,
-    DELETED
+    DELETED;
+
+    public boolean isActive() {
+        return this == ACTIVE;
+    }
 }
