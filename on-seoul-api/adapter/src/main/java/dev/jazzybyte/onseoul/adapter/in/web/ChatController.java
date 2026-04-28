@@ -3,6 +3,7 @@ package dev.jazzybyte.onseoul.adapter.in.web;
 import dev.jazzybyte.onseoul.adapter.out.aiservice.AiServicePort;
 import dev.jazzybyte.onseoul.domain.port.in.SendQueryCommand;
 import dev.jazzybyte.onseoul.domain.port.in.SendQueryUseCase;
+import dev.jazzybyte.onseoul.exception.OnSeoulApiException;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -49,9 +50,12 @@ public class ChatController {
                         },
                         error -> {
                             try {
+                                String clientMessage = (error instanceof OnSeoulApiException)
+                                        ? error.getMessage()
+                                        : "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
                                 emitter.send(SseEmitter.event()
                                         .name("error")
-                                        .data(error.getMessage()));
+                                        .data(clientMessage));
                             } catch (IOException ignored) {
                             }
                             emitter.completeWithError(error);
