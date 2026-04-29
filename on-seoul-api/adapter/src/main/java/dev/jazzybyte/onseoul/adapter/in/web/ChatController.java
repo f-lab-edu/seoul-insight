@@ -1,8 +1,7 @@
 package dev.jazzybyte.onseoul.adapter.in.web;
 
+import dev.jazzybyte.onseoul.domain.port.in.QueryAndStreamUseCase;
 import dev.jazzybyte.onseoul.domain.port.in.SendQueryCommand;
-import dev.jazzybyte.onseoul.domain.port.in.SendQueryUseCase;
-import dev.jazzybyte.onseoul.domain.port.out.AiServiceStreamPort;
 import dev.jazzybyte.onseoul.exception.OnSeoulApiException;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
@@ -17,13 +16,10 @@ import java.io.IOException;
 @RestController
 public class ChatController {
 
-    private final SendQueryUseCase sendQueryUseCase;
-    private final AiServiceStreamPort aiServicePort;
+    private final QueryAndStreamUseCase queryAndStreamUseCase;
 
-    public ChatController(final SendQueryUseCase sendQueryUseCase,
-                          final AiServiceStreamPort aiServicePort) {
-        this.sendQueryUseCase = sendQueryUseCase;
-        this.aiServicePort = aiServicePort;
+    public ChatController(final QueryAndStreamUseCase queryAndStreamUseCase) {
+        this.queryAndStreamUseCase = queryAndStreamUseCase;
     }
 
     @PostMapping(value = "/query", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -33,16 +29,11 @@ public class ChatController {
 
         SseEmitter emitter = new SseEmitter(120_000L);
 
-        Long roomId = sendQueryUseCase.prepare(
-                new SendQueryCommand(userId, request.roomId(), request.question()));
-
-        StringBuilder answer = new StringBuilder();
-
-        aiServicePort.stream(request.question(), roomId)
+        queryAndStreamUseCase.streamAndSave(
+                        new SendQueryCommand(userId, request.roomId(), request.question()))
                 .subscribe(
                         token -> {
                             try {
-                                answer.append(token);
                                 emitter.send(SseEmitter.event().data(token));
                             } catch (IOException e) {
                                 emitter.completeWithError(e);
@@ -60,10 +51,7 @@ public class ChatController {
                             }
                             emitter.completeWithError(error);
                         },
-                        () -> {
-                            sendQueryUseCase.saveAnswer(roomId, answer.toString());
-                            emitter.complete();
-                        }
+                        emitter::complete
                 );
 
         return emitter;
