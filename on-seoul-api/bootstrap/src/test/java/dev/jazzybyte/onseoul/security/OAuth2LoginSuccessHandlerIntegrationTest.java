@@ -151,4 +151,93 @@ class OAuth2LoginSuccessHandlerIntegrationTest {
         assertThat(res.getStatus()).isEqualTo(302);
         assertThat(res.getRedirectedUrl()).isEqualTo(FRONTEND_BASE_URL + "/oauth/callback?status=success");
     }
+
+    // ── 쿠키 속성 검증 ─────────────────────────────────────────────
+
+    @Test
+    @DisplayName("성공 시 access_token 쿠키는 HttpOnly; Path=/; maxAge=900 속성을 갖는다")
+    void success_access_cookie_has_correct_attributes() throws Exception {
+        Map<String, Object> attrs = Map.of("id", "g-001", "email", "a@b.com", "name", "테스트");
+        String accessToken = tokenIssuer.generateAccessToken(5L);
+        String refreshToken = tokenIssuer.generateRefreshToken(5L);
+        when(socialLoginUseCase.socialLogin(any()))
+                .thenReturn(new TokenResponse(accessToken, refreshToken));
+
+        MockHttpServletResponse res = invoke(googleToken(attrs));
+
+        List<String> setCookieHeaders = res.getHeaders("Set-Cookie");
+        String accessCookie = setCookieHeaders.stream()
+                .filter(h -> h.startsWith("access_token="))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("access_token 쿠키 없음"));
+
+        assertThat(accessCookie).contains("HttpOnly");
+        assertThat(accessCookie).containsIgnoringCase("Path=/");
+        assertThat(accessCookie).containsIgnoringCase("Max-Age=900");
+        assertThat(accessCookie).containsIgnoringCase("SameSite=Strict");
+    }
+
+    @Test
+    @DisplayName("성공 시 refresh_token 쿠키는 HttpOnly; Path=/auth 속성을 갖는다")
+    void success_refresh_cookie_has_correct_attributes() throws Exception {
+        Map<String, Object> attrs = Map.of("id", "g-002", "email", "b@b.com", "name", "테스트2");
+        String accessToken = tokenIssuer.generateAccessToken(6L);
+        String refreshToken = tokenIssuer.generateRefreshToken(6L);
+        when(socialLoginUseCase.socialLogin(any()))
+                .thenReturn(new TokenResponse(accessToken, refreshToken));
+
+        MockHttpServletResponse res = invoke(googleToken(attrs));
+
+        List<String> setCookieHeaders = res.getHeaders("Set-Cookie");
+        String refreshCookie = setCookieHeaders.stream()
+                .filter(h -> h.startsWith("refresh_token="))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("refresh_token 쿠키 없음"));
+
+        assertThat(refreshCookie).contains("HttpOnly");
+        assertThat(refreshCookie).containsIgnoringCase("Path=/auth");
+        assertThat(refreshCookie).containsIgnoringCase("SameSite=Strict");
+        // maxAge는 refreshTokenMinutes(10080분)에서 초로 환산
+        assertThat(refreshCookie).containsIgnoringCase("Max-Age=604800");
+    }
+
+    @Test
+    @DisplayName("SUSPENDED 계정 — 에러 리다이렉트 시 쿠키를 발급하지 않는다")
+    void suspended_user_does_not_set_cookies() throws Exception {
+        Map<String, Object> attrs = Map.of("id", "g-003", "email", "bad@b.com", "name", "정지됨");
+        when(socialLoginUseCase.socialLogin(any()))
+                .thenThrow(new OnSeoulApiException(ErrorCode.FORBIDDEN, "비활성화된 계정입니다."));
+
+        MockHttpServletResponse res = invoke(googleToken(attrs));
+
+        assertThat(res.getStatus()).isEqualTo(302);
+        assertThat(res.getRedirectedUrl()).isEqualTo(FRONTEND_BASE_URL + "/oauth/callback?error=forbidden");
+        // 에러 시 쿠키가 발급되어선 안 된다
+        assertThat(res.getHeaders("Set-Cookie")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("buildAccessCookie — cookieSecure=false 일 때 Secure 속성 없음")
+    void build_access_cookie_insecure_mode() {
+        String cookie = handler.buildAccessCookie("tok").toString();
+        assertThat(cookie).doesNotContainIgnoringCase("Secure");
+    }
+
+    @Test
+    @DisplayName("expireAccessCookie — maxAge=0, 빈 값으로 생성된다")
+    void expire_access_cookie_has_max_age_zero() {
+        String cookie = handler.expireAccessCookie().toString();
+        assertThat(cookie).contains("access_token=");
+        assertThat(cookie).containsIgnoringCase("Max-Age=0");
+        assertThat(cookie).containsIgnoringCase("Path=/");
+    }
+
+    @Test
+    @DisplayName("expireRefreshCookie — maxAge=0, Path=/auth 로 생성된다")
+    void expire_refresh_cookie_has_max_age_zero_and_auth_path() {
+        String cookie = handler.expireRefreshCookie().toString();
+        assertThat(cookie).contains("refresh_token=");
+        assertThat(cookie).containsIgnoringCase("Max-Age=0");
+        assertThat(cookie).containsIgnoringCase("Path=/auth");
+    }
 }

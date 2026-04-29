@@ -140,4 +140,42 @@ class SecurityConfigTest {
         mockMvc.perform(post("/admin/collection/trigger"))
                 .andExpect(status().isUnauthorized());
     }
+
+    // ── 쿠키 기반 인증 (JwtAuthenticationFilter 쿠키 폴백) ──────────
+
+    @Test
+    @DisplayName("access_token 쿠키만 있고 Authorization 헤더가 없어도 보호된 엔드포인트를 통과한다")
+    void protectedEndpoint_withAccessTokenCookieOnly_passes() throws Exception {
+        String token = tokenIssuerPort.generateAccessToken(1L);
+        doNothing().when(collectDatasetUseCase).collectAll();
+
+        mockMvc.perform(post("/admin/collection/trigger")
+                        .cookie(new jakarta.servlet.http.Cookie("access_token", token)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("헤더와 쿠키 둘 다 있을 때 헤더(유효) 우선 — 쿠키는 무효 토큰이어도 인증 성공")
+    void protectedEndpoint_headerTakesPriorityOverCookie() throws Exception {
+        String validToken = tokenIssuerPort.generateAccessToken(1L);
+        doNothing().when(collectDatasetUseCase).collectAll();
+
+        mockMvc.perform(post("/admin/collection/trigger")
+                        .header("Authorization", "Bearer " + validToken)
+                        .cookie(new jakarta.servlet.http.Cookie("access_token", "invalid-cookie-token")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("만료된 access_token 쿠키로 보호된 엔드포인트에 요청하면 401을 반환한다")
+    void protectedEndpoint_withExpiredCookie_returns401() throws Exception {
+        JwtTokenIssuer expiredIssuer = new JwtTokenIssuer(
+                "dGVzdC1zZWNyZXQta2V5LWZvci1qdW5pdC10ZXN0cy10aGlzLWlzLTI1Ni1iaXQ=",
+                -1L, -1L);
+        String expiredToken = expiredIssuer.generateAccessToken(1L);
+
+        mockMvc.perform(get("/some-protected-path")
+                        .cookie(new jakarta.servlet.http.Cookie("access_token", expiredToken)))
+                .andExpect(status().isUnauthorized());
+    }
 }
