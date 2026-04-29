@@ -1,10 +1,7 @@
 package dev.jazzybyte.onseoul.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.jazzybyte.onseoul.adapter.in.security.JjwtTokenIssuer;
+import dev.jazzybyte.onseoul.adapter.in.security.JwtTokenIssuer;
 import dev.jazzybyte.onseoul.adapter.in.security.OAuth2LoginSuccessHandler;
-import dev.jazzybyte.onseoul.domain.model.User;
-import dev.jazzybyte.onseoul.domain.model.UserStatus;
 import dev.jazzybyte.onseoul.domain.port.in.SocialLoginCommand;
 import dev.jazzybyte.onseoul.domain.port.in.SocialLoginUseCase;
 import dev.jazzybyte.onseoul.domain.port.in.TokenResponse;
@@ -22,9 +19,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
-import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,16 +38,17 @@ class OAuth2LoginSuccessHandlerIntegrationTest {
     private static final String TEST_SECRET =
             "dGVzdC1zZWNyZXQta2V5LWZvci1qdW5pdC10ZXN0cy10aGlzLWlzLTI1Ni1iaXQ=";
 
+    private static final String FRONTEND_BASE_URL = "http://localhost:3000";
+
     @Mock private SocialLoginUseCase socialLoginUseCase;
 
     private OAuth2LoginSuccessHandler handler;
-    private JjwtTokenIssuer tokenIssuer;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private JwtTokenIssuer tokenIssuer;
 
     @BeforeEach
     void setUp() {
-        tokenIssuer = new JjwtTokenIssuer(TEST_SECRET, 15L, 10080L);
-        handler = new OAuth2LoginSuccessHandler(socialLoginUseCase, objectMapper);
+        tokenIssuer = new JwtTokenIssuer(TEST_SECRET, 15L, 10080L);
+        handler = new OAuth2LoginSuccessHandler(socialLoginUseCase, tokenIssuer, FRONTEND_BASE_URL, false);
     }
 
     private OAuth2AuthenticationToken googleToken(Map<String, Object> attrs) {
@@ -89,10 +85,9 @@ class OAuth2LoginSuccessHandlerIntegrationTest {
 
         MockHttpServletResponse res = invoke(googleToken(attrs));
 
-        assertThat(res.getStatus()).isEqualTo(200);
-        TokenResponse token = objectMapper.readValue(res.getContentAsString(), TokenResponse.class);
-        assertThat(token.accessToken()).isNotBlank();
-        assertThat(token.refreshToken()).isNotBlank();
+        assertThat(res.getStatus()).isEqualTo(302);
+        assertThat(res.getRedirectedUrl()).isEqualTo(FRONTEND_BASE_URL + "/oauth/callback?status=success");
+        assertThat(res.getHeader("Set-Cookie")).contains("access_token=");
     }
 
     @Test
@@ -108,7 +103,8 @@ class OAuth2LoginSuccessHandlerIntegrationTest {
 
         MockHttpServletResponse res = invoke(googleToken(attrs));
 
-        assertThat(res.getStatus()).isEqualTo(403);
+        assertThat(res.getStatus()).isEqualTo(302);
+        assertThat(res.getRedirectedUrl()).isEqualTo(FRONTEND_BASE_URL + "/oauth/callback?error=forbidden");
     }
 
     @Test
@@ -131,7 +127,8 @@ class OAuth2LoginSuccessHandlerIntegrationTest {
 
         MockHttpServletResponse res = invoke(kakaoToken(attrs));
 
-        assertThat(res.getStatus()).isEqualTo(200);
+        assertThat(res.getStatus()).isEqualTo(302);
+        assertThat(res.getRedirectedUrl()).isEqualTo(FRONTEND_BASE_URL + "/oauth/callback?status=success");
         verify(socialLoginUseCase).socialLogin(argThat(cmd ->
                 "kakao".equals(cmd.provider()) && "9876543".equals(cmd.providerId())));
     }
@@ -151,6 +148,7 @@ class OAuth2LoginSuccessHandlerIntegrationTest {
 
         MockHttpServletResponse res = invoke(kakaoToken(attrs));
 
-        assertThat(res.getStatus()).isEqualTo(200);
+        assertThat(res.getStatus()).isEqualTo(302);
+        assertThat(res.getRedirectedUrl()).isEqualTo(FRONTEND_BASE_URL + "/oauth/callback?status=success");
     }
 }

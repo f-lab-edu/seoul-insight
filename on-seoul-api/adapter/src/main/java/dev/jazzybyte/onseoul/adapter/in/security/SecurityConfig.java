@@ -43,7 +43,7 @@ public class SecurityConfig {
                 // 인증 없이 접근이 필요한 엔드포인트만 명시적으로 `permitAll()`로 등록
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health").permitAll()
-                        .requestMatchers("/auth/login", "/auth/token/refresh", "/auth/logout").permitAll()
+                        .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/oauth2/authorization/**", "/login/oauth2/code/**").permitAll()
                         .anyRequest().authenticated()
                 )

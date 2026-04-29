@@ -2,7 +2,7 @@ package dev.jazzybyte.onseoul.chat;
 
 import dev.jazzybyte.onseoul.adapter.in.web.ChatController;
 import dev.jazzybyte.onseoul.adapter.in.web.GlobalExceptionHandler;
-import dev.jazzybyte.onseoul.adapter.out.aiservice.AiServicePort;
+import dev.jazzybyte.onseoul.domain.port.out.AiServiceStreamPort;
 import dev.jazzybyte.onseoul.domain.port.in.SendQueryCommand;
 import dev.jazzybyte.onseoul.domain.port.in.SendQueryUseCase;
 import org.junit.jupiter.api.DisplayName;
@@ -41,7 +41,7 @@ class ChatControllerTest {
     private SendQueryUseCase sendQueryUseCase;
 
     @MockitoBean
-    private AiServicePort aiServicePort;
+    private AiServiceStreamPort aiServicePort;
 
     @Test
     @DisplayName("POST /query - 인증된 사용자 질의 시 SSE 토큰을 스트리밍하고 답변을 저장한다")

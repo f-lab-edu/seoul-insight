@@ -48,7 +48,7 @@ public class SocialLoginService implements SocialLoginUseCase {
 
         String accessToken = tokenIssuerPort.generateAccessToken(user.getId());
         String refreshToken = tokenIssuerPort.generateRefreshToken(user.getId());
-        refreshTokenStorePort.save(user.getId(), refreshToken);
+        refreshTokenStorePort.save(user.getId(), refreshToken, tokenIssuerPort.getRefreshTokenMinutes());
         return new TokenResponse(accessToken, refreshToken);
     }
 }

@@ -1,6 +1,6 @@
 package dev.jazzybyte.onseoul.security;
 
-import dev.jazzybyte.onseoul.adapter.in.security.JjwtTokenIssuer;
+import dev.jazzybyte.onseoul.adapter.in.security.JwtTokenIssuer;
 import dev.jazzybyte.onseoul.adapter.out.aiservice.AiServicePort;
 import dev.jazzybyte.onseoul.domain.port.in.CollectDatasetUseCase;
 import dev.jazzybyte.onseoul.domain.port.in.LogoutUseCase;
@@ -107,7 +107,7 @@ class SecurityConfigTest {
     @Test
     @DisplayName("만료된 Bearer 토큰으로 보호된 엔드포인트에 요청하면 401을 반환한다")
     void protectedEndpoint_withExpiredToken_returns401() throws Exception {
-        JjwtTokenIssuer expiredIssuer = new JjwtTokenIssuer(
+        JwtTokenIssuer expiredIssuer = new JwtTokenIssuer(
                 "dGVzdC1zZWNyZXQta2V5LWZvci1qdW5pdC10ZXN0cy10aGlzLWlzLTI1Ni1iaXQ=",
                 -1L, -1L);
         String expiredToken = expiredIssuer.generateAccessToken(1L);

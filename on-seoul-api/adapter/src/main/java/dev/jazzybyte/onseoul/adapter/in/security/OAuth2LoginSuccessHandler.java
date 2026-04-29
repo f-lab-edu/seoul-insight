@@ -1,12 +1,13 @@
 package dev.jazzybyte.onseoul.adapter.in.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.jazzybyte.onseoul.domain.port.in.SocialLoginCommand;
 import dev.jazzybyte.onseoul.domain.port.in.SocialLoginUseCase;
 import dev.jazzybyte.onseoul.domain.port.in.TokenResponse;
+import dev.jazzybyte.onseoul.domain.port.out.TokenIssuerPort;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -14,9 +15,16 @@ import org.springframework.security.web.authentication.AuthenticationSuccessHand
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Map;
 
+/**
+ * OAuth2 로그인 성공 시 Access/Refresh 토큰을 HttpOnly 쿠키로 발급하고
+ * 프론트엔드 콜백 URL로 리다이렉트한다.
+ *
+ * <p>성공: {@code {frontendBaseUrl}/oauth/callback?status=success}</p>
+ * <p>SUSPENDED/DELETED 계정: {@code {frontendBaseUrl}/oauth/callback?error=forbidden}</p>
+ */
 @Component
 public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
@@ -25,13 +33,22 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     /** HttpOnly 쿠키로 전달되는 Refresh Token 쿠키 이름. AuthController와 공유. */
     public static final String REFRESH_TOKEN_COOKIE = "refresh_token";
 
-    private final SocialLoginUseCase socialLoginUseCase;
-    private final ObjectMapper objectMapper;
+    private static final int ACCESS_TOKEN_MAX_AGE_SECONDS = 900; // 15분
 
-    public OAuth2LoginSuccessHandler(final SocialLoginUseCase socialLoginUseCase,
-                                     final ObjectMapper objectMapper) {
+    private final SocialLoginUseCase socialLoginUseCase;
+    private final String frontendBaseUrl;
+    private final boolean cookieSecure;
+    private final long refreshTokenMinutes;
+
+    public OAuth2LoginSuccessHandler(
+            final SocialLoginUseCase socialLoginUseCase,
+            final TokenIssuerPort tokenIssuerPort,
+            @Value("${app.frontend-base-url}") String frontendBaseUrl,
+            @Value("${app.cookie-secure:true}") boolean cookieSecure) {
         this.socialLoginUseCase = socialLoginUseCase;
-        this.objectMapper = objectMapper;
+        this.frontendBaseUrl = frontendBaseUrl;
+        this.cookieSecure = cookieSecure;
+        this.refreshTokenMinutes = tokenIssuerPort.getRefreshTokenMinutes();
     }
 
     @Override
@@ -63,17 +80,68 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             SocialLoginCommand command = new SocialLoginCommand(provider, providerId, email, nickname);
             TokenResponse tokenResponse = socialLoginUseCase.socialLogin(command);
 
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            response.setStatus(HttpServletResponse.SC_OK);
-            objectMapper.writeValue(response.getWriter(), tokenResponse);
+            response.addHeader("Set-Cookie", buildAccessCookie(tokenResponse.accessToken()).toString());
+            response.addHeader("Set-Cookie", buildRefreshCookie(tokenResponse.refreshToken()).toString());
+            response.sendRedirect(frontendBaseUrl + "/oauth/callback?status=success");
 
         } catch (dev.jazzybyte.onseoul.exception.OnSeoulApiException ex) {
-            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            objectMapper.writeValue(response.getWriter(),
-                    Map.of("code", "FORBIDDEN", "message", ex.getMessage()));
+            response.sendRedirect(frontendBaseUrl + "/oauth/callback?error=forbidden");
         }
+    }
+
+    /**
+     * Access Token HttpOnly 쿠키를 생성한다.
+     * maxAge = 15분(900초), path = "/".
+     */
+    public ResponseCookie buildAccessCookie(String token) {
+        return ResponseCookie.from(ACCESS_TOKEN_COOKIE, token)
+                .httpOnly(true)
+                .secure(cookieSecure)
+                .sameSite("Strict")
+                .path("/")
+                .maxAge(ACCESS_TOKEN_MAX_AGE_SECONDS)
+                .build();
+    }
+
+    /**
+     * Refresh Token HttpOnly 쿠키를 생성한다.
+     * maxAge = refreshTokenMinutes(분), path = "/auth".
+     */
+    public ResponseCookie buildRefreshCookie(String token) {
+        return ResponseCookie.from(REFRESH_TOKEN_COOKIE, token)
+                .httpOnly(true)
+                .secure(cookieSecure)
+                .sameSite("Strict")
+                .path("/auth")
+                .maxAge(Duration.ofMinutes(refreshTokenMinutes))
+                .build();
+    }
+
+    /**
+     * Access Token 쿠키를 만료시킨다 (로그아웃용).
+     * maxAge = 0, path = "/".
+     */
+    public ResponseCookie expireAccessCookie() {
+        return ResponseCookie.from(ACCESS_TOKEN_COOKIE, "")
+                .httpOnly(true)
+                .secure(cookieSecure)
+                .sameSite("Strict")
+                .path("/")
+                .maxAge(0)
+                .build();
+    }
+
+    /**
+     * Refresh Token 쿠키를 만료시킨다 (로그아웃용).
+     * maxAge = 0, path = "/auth".
+     */
+    public ResponseCookie expireRefreshCookie() {
+        return ResponseCookie.from(REFRESH_TOKEN_COOKIE, "")
+                .httpOnly(true)
+                .secure(cookieSecure)
+                .sameSite("Strict")
+                .path("/auth")
+                .maxAge(0)
+                .build();
     }
 }
