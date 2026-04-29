@@ -6,8 +6,7 @@ import dev.jazzybyte.onseoul.domain.port.in.SendQueryUseCase;
 import dev.jazzybyte.onseoul.domain.port.out.AiServiceStreamPort;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
-
-import java.util.concurrent.atomic.AtomicReference;
+import reactor.core.scheduler.Schedulers;
 
 @Service
 public class ChatStreamService implements QueryAndStreamUseCase {
@@ -24,10 +23,11 @@ public class ChatStreamService implements QueryAndStreamUseCase {
     @Override
     public Flux<String> streamAndSave(SendQueryCommand command) {
         Long roomId = sendQueryUseCase.prepare(command);
-        AtomicReference<StringBuilder> buffer = new AtomicReference<>(new StringBuilder());
+        StringBuilder buffer = new StringBuilder();
 
         return aiServiceStreamPort.stream(command.question(), roomId)
-                .doOnNext(token -> buffer.get().append(token))
-                .doOnComplete(() -> sendQueryUseCase.saveAnswer(roomId, buffer.get().toString()));
+                .publishOn(Schedulers.boundedElastic())  // Netty 이벤트 루프 → boundedElastic 전환(블로킹 작업 허용 및 직렬 실행 보장)
+                .doOnNext(buffer::append)                // 단일 스레드 직렬 실행 → StringBuilder 안전
+                .doOnComplete(() -> sendQueryUseCase.saveAnswer(roomId, buffer.toString())); // JPA 블로킹 OK
     }
 }

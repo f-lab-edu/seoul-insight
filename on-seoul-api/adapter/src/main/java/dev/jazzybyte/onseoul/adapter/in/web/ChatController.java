@@ -42,8 +42,7 @@ public class ChatController {
                         error -> {
                             try {
                                 String clientMessage = (error instanceof OnSeoulApiException)
-                                        ? error.getMessage()
-                                        : "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+                                        ? error.getMessage() : "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
                                 emitter.send(SseEmitter.event()
                                         .name("error")
                                         .data(clientMessage));
