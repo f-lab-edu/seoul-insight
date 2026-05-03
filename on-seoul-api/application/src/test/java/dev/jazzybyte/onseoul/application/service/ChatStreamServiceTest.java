@@ -14,6 +14,7 @@ import reactor.test.StepVerifier;
 
 import java.time.Duration;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,7 +47,7 @@ class ChatStreamServiceTest {
 
     @Test
     @DisplayName("streamAndSave() — 스트림 완료 시 청크를 이어붙인 전체 답변으로 saveAnswer가 호출된다")
-    void streamAndSave_savesFullAnswerOnComplete() throws InterruptedException {
+    void streamAndSave_savesFullAnswerOnComplete() {
         SendQueryCommand command = new SendQueryCommand(1L, 5L, "오늘 날씨는?");
         when(sendQueryUseCase.prepare(command)).thenReturn(5L);
         when(aiServiceStreamPort.stream("오늘 날씨는?", 5L))
@@ -56,10 +57,8 @@ class ChatStreamServiceTest {
                 .expectNext("맑")
                 .expectNext("음")
                 .expectNext("입니다")
-                .verifyComplete();
-
-        // doOnComplete는 boundedElastic 스레드에서 실행되므로 완료 신호 전파 후 저장까지 짧은 대기
-        Thread.sleep(100);
+                .expectComplete()
+                .verify(Duration.ofSeconds(2));
 
         verify(sendQueryUseCase).saveAnswer(5L, "맑음입니다");
     }
@@ -82,7 +81,7 @@ class ChatStreamServiceTest {
 
     @Test
     @DisplayName("streamAndSave() — saveAnswer에서 예외 발생 시 Flux가 정상 complete된다 (onError로 전파되지 않는다)")
-    void streamAndSave_saveAnswerFails_streamStillCompletes() throws InterruptedException {
+    void streamAndSave_saveAnswerFails_streamStillCompletes() {
         SendQueryCommand command = new SendQueryCommand(1L, 7L, "진료 예약 안내");
         when(sendQueryUseCase.prepare(command)).thenReturn(7L);
         when(aiServiceStreamPort.stream("진료 예약 안내", 7L))
@@ -93,26 +92,37 @@ class ChatStreamServiceTest {
         StepVerifier.create(service.streamAndSave(command))
                 .expectNext("진료")
                 .expectNext("안내")
-                .verifyComplete();
-
-        Thread.sleep(100);
+                .expectComplete()
+                .verify(Duration.ofSeconds(2));
 
         verify(sendQueryUseCase).saveAnswer(7L, "진료안내");
     }
 
     @Test
     @DisplayName("streamAndSave() — 빈 스트림일 때 saveAnswer(\"\")가 호출된다")
-    void streamAndSave_emptyStream_saveAnswerCalledWithEmptyString() throws InterruptedException {
+    void streamAndSave_emptyStream_saveAnswerCalledWithEmptyString() {
         SendQueryCommand command = new SendQueryCommand(1L, 3L, "존재하지 않는 서비스");
         when(sendQueryUseCase.prepare(command)).thenReturn(3L);
         when(aiServiceStreamPort.stream("존재하지 않는 서비스", 3L))
                 .thenReturn(Flux.empty());
 
         StepVerifier.create(service.streamAndSave(command))
-                .verifyComplete();
-
-        Thread.sleep(100);
+                .expectComplete()
+                .verify(Duration.ofSeconds(2));
 
         verify(sendQueryUseCase).saveAnswer(3L, "");
+    }
+
+    @Test
+    @DisplayName("streamAndSave() — prepare()가 예외를 던지면 호출자에게 예외가 전파된다 (Flux.error()가 아닌 throw)")
+    void streamAndSave_prepareFails_throwsException() {
+        SendQueryCommand command = new SendQueryCommand(1L, null, "오류 유발 질문");
+        when(sendQueryUseCase.prepare(command))
+                .thenThrow(new RuntimeException("ChatRoom 생성 실패"));
+
+        assertThatThrownBy(() -> service.streamAndSave(command))
+                .isInstanceOf(RuntimeException.class);
+
+        verifyNoInteractions(aiServiceStreamPort);
     }
 }

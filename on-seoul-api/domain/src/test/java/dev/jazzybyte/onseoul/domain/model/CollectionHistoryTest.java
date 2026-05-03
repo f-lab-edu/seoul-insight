@@ -75,8 +75,10 @@ class CollectionHistoryTest {
         CollectionHistory history = CollectionHistory.create(1L);
         history.complete(100, 10, 5, 2, 3000);
 
+        assertThat(history.getDurationMs()).isNotNull();
         assertThatThrownBy(() -> history.complete(200, 20, 10, 4, 6000))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("이미 결과가 기록된");
     }
 
     @Test
@@ -85,8 +87,10 @@ class CollectionHistoryTest {
         CollectionHistory history = CollectionHistory.create(1L);
         history.complete(100, 10, 5, 2, 3000);
 
+        assertThat(history.getDurationMs()).isNotNull();
         assertThatThrownBy(() -> history.fail("에러", 500))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("이미 결과가 기록된");
     }
 
     @Test
@@ -95,8 +99,34 @@ class CollectionHistoryTest {
         CollectionHistory history = CollectionHistory.create(1L);
         history.fail("초기 실패", 500);
 
+        assertThat(history.getDurationMs()).isNotNull();
         assertThatThrownBy(() -> history.partial(30, 5, 2, 0, 1000, "부분 실패"))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("이미 결과가 기록된");
+    }
+
+    @Test
+    @DisplayName("partial() 후 complete() 호출 — IllegalStateException을 던진다")
+    void complete_afterPartial_throwsIllegalStateException() {
+        CollectionHistory history = CollectionHistory.create(1L);
+        history.partial(50, 8, 3, 1, 2000, "일부 실패");
+
+        assertThat(history.getDurationMs()).isNotNull();
+        assertThatThrownBy(() -> history.complete(100, 10, 5, 2, 3000))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("이미 결과가 기록된");
+    }
+
+    @Test
+    @DisplayName("fail — 이미 fail된 이력에 재호출하면 IllegalStateException")
+    void fail_calledTwice_throwsIllegalStateException() {
+        CollectionHistory history = CollectionHistory.create(1L);
+        history.fail("첫 번째 오류", 500);
+
+        assertThat(history.getDurationMs()).isNotNull();
+        assertThatThrownBy(() -> history.fail("두 번째 오류", 600))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("이미 결과가 기록된");
     }
 
     @Test
