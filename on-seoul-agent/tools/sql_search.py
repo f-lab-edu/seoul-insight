@@ -18,7 +18,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 TOP_K: int = 10
-
+_LIKE_ESCAPE_TABLE = str.maketrans({
+    "\\": "\\\\",
+    "%":  "\\%",
+    "_":  "\\_",
+})
 
 def _escape_like(value: str) -> str:
     """ILIKE 패턴에서 와일드카드 문자를 이스케이프한다.
@@ -26,7 +30,7 @@ def _escape_like(value: str) -> str:
     PostgreSQL ILIKE의 특수 문자(%·_·\\)를 리터럴로 취급하도록
     백슬래시로 이스케이프한다. SQL 쪽에는 ESCAPE '\\' 절을 함께 사용한다.
     """
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return value.translate(_LIKE_ESCAPE_TABLE)
 
 _RESULT_COLUMNS = """
     service_id, service_name, max_class_name, min_class_name,
