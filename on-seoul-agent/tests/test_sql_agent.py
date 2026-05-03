@@ -17,6 +17,8 @@ def _make_state(message: str = "수영장 알려줘") -> AgentState:
         message=message,
         title_needed=False,
         intent=IntentType.SQL_SEARCH,
+        lat=None,
+        lng=None,
         refined_query=None,
         sql_results=None,
         vector_results=None,
@@ -108,7 +110,7 @@ class TestSqlAgent:
 
     async def test_query_no_extra_filter_when_params_empty(self):
         """파라미터가 모두 None이면 deleted_at IS NULL 조건만 포함되고, top_k만 bind된다."""
-        from agents.sql_agent import _TOP_K
+        from tools.sql_search import TOP_K as _TOP_K
 
         agent, session = _make_agent(_SqlParams(), [])
         await agent.search(_make_state(), session)
@@ -144,10 +146,12 @@ class TestSqlAgent:
         sql_str = str(session.execute.call_args[0][0])
         bind = session.execute.call_args[0][1]
 
+        from tools.sql_search import _escape_like
+
         # 악성 문자열이 SQL 텍스트에 직접 포함되어선 안 된다
         assert malicious not in sql_str
-        # 대신 bind 파라미터로만 전달되어야 한다 (ILIKE 패턴 래핑 포함)
-        assert bind["keyword"] == f"%{malicious}%"
+        # _escape_like 처리 후 %...% 래핑되어 bind 파라미터로만 전달되어야 한다
+        assert bind["keyword"] == f"%{_escape_like(malicious)}%"
 
     async def test_search_returns_empty_list_when_no_rows(self):
         """DB 결과가 없으면 sql_results는 빈 리스트다."""

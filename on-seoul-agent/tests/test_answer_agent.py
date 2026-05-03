@@ -17,6 +17,8 @@ def _make_state(**kwargs) -> AgentState:
         message="수영장 알려줘",
         title_needed=False,
         intent=IntentType.SQL_SEARCH,
+        lat=None,
+        lng=None,
         refined_query=None,
         sql_results=None,
         vector_results=None,

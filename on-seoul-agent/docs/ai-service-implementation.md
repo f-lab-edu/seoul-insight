@@ -33,7 +33,7 @@ FastAPI + LangChain 기반 멀티에이전트 서비스 구현 순서.
 
 ### Phase 3. LLM 클라이언트
 
-- [x] `llm/client.py` — LLM 프로파이더 추상화 (Gemini / GPT 전환 가능하도록)
+- [x] `llm/client.py` — LLM 프로바이더 추상화 (Gemini / GPT 전환 가능하도록)
 - [x] `llm/embedder.py` — 텍스트 → 벡터 변환
 - [x] `llm/generator.py` — 프롬프트 조립 → LLM 호출 → 텍스트 반환
 
@@ -112,7 +112,6 @@ FastAPI + LangChain 기반 멀티에이전트 서비스 구현 순서.
 ### Phase 12. API 엔드포인트
 
 - [ ] `routers/chat.py` — `POST /chat/stream` (room_id/message_id 수신 → LangChain 워크플로우 실행 → SSE 스트리밍)
-- [ ] `routers/notification.py` — `POST /notification/template` (변경 이력 기반 알림 메시지 생성)
 - [ ] `main.py`에 라우터 등록 및 전역 에러 핸들러 구성
 
 ---
@@ -153,6 +152,6 @@ FastAPI + LangChain 기반 멀티에이전트 서비스 구현 순서.
 
 ## 참고
 
-- LLM 프로파이더 미확정 → `llm/client.py` 추상화 레이어에서 프로파이더 교체 가능하도록 설계
+- LLM 프로바이더 미확정 → `llm/client.py` 추상화 레이어에서 프로바이더 교체 가능하도록 설계
 - 관리 UI 없음 → Swagger UI (`/docs`) / Postman으로 대체
 - 모니터링(Prometheus, Grafana) 연계는 Phase 13 이후 별도 문서화
