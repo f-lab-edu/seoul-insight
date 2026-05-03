@@ -9,8 +9,6 @@ dependencies {
 }
 
 bootJar {
-    enabled = true
     archiveFileName = 'collector.jar'
     mainClass = 'dev.jazzybyte.onseoul.collector.CollectorApplication'
 }
-jar.enabled = false

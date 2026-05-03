@@ -1,11 +1,7 @@
 
 dependencies {
     api project(':common')
-    implementation 'jakarta.validation:jakarta.validation-api'
-    implementation 'io.projectreactor:reactor-core'
+    api 'io.projectreactor:reactor-core'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 }
-
-bootJar.enabled = false
-jar.enabled = true
