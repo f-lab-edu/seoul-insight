@@ -93,8 +93,7 @@ class AgentWorkflow:
 
         except Exception as exc:
             logger.exception("워크플로우 실행 중 오류")
-            # 예외 발생 지점에서 세션 상태를 정리한다.
-            # _save_trace는 항상 깨끗한 세션을 전제하므로 여기서 책임진다.
+            # 예외 발생 지점에서 롤백처리한다.
             try:
                 await ai_session.rollback()
             except Exception:
