@@ -7,6 +7,7 @@ import dev.jazzybyte.onseoul.domain.port.out.SeoulDatasetFetchPort;
 import dev.jazzybyte.onseoul.exception.ErrorCode;
 import dev.jazzybyte.onseoul.exception.OnSeoulApiException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -17,6 +18,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 서울 열린데이터 광장 API를 호출하여 공공서비스 예약 데이터를 수집하는 어댑터 구현체
+ */
 @Slf4j
 @Component
 class SeoulOpenApiAdapter implements SeoulDatasetFetchPort {
@@ -27,6 +31,7 @@ class SeoulOpenApiAdapter implements SeoulDatasetFetchPort {
     private final PublicServiceRowMapper rowMapper;
     private final Retry retrySpec;
 
+    @Autowired
     SeoulOpenApiAdapter(WebClient seoulWebClient,
                         SeoulApiProperties properties,
                         ObjectMapper objectMapper,
