@@ -1,9 +1,12 @@
 package dev.jazzybyte.onseoul.adapter.out.aiservice;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.jazzybyte.onseoul.exception.ErrorCode;
 import dev.jazzybyte.onseoul.exception.OnSeoulApiException;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -45,7 +48,7 @@ class AiServiceAdapterTest {
                 .setBody("data: 안녕\n\ndata: 하세요\n\n")
                 .setResponseCode(200));
 
-        List<String> tokens = adapter.stream("서울 문화행사 알려줘", 1L)
+        List<String> tokens = adapter.stream("서울 문화행사 알려줘", 1L, 10L, null, null)
                 .collectList()
                 .block();
 
@@ -60,7 +63,7 @@ class AiServiceAdapterTest {
                 .setBody("{\"error\": \"Internal Server Error\"}"));
 
         assertThatThrownBy(() ->
-                adapter.stream("질문", 1L).collectList().block()
+                adapter.stream("질문", 1L, 10L, null, null).collectList().block()
         )
                 .isInstanceOf(OnSeoulApiException.class)
                 .satisfies(ex -> assertThat(((OnSeoulApiException) ex).getErrorCode())
@@ -74,7 +77,7 @@ class AiServiceAdapterTest {
         mockWebServer.shutdown();
 
         assertThatThrownBy(() ->
-                adapter.stream("질문", 1L).collectList().block()
+                adapter.stream("질문", 1L, 10L, null, null).collectList().block()
         )
                 .isInstanceOf(OnSeoulApiException.class)
                 .satisfies(ex -> assertThat(((OnSeoulApiException) ex).getErrorCode())
@@ -89,10 +92,71 @@ class AiServiceAdapterTest {
                 .setBody(": keep-alive\n\ndata: 토큰\n\n")
                 .setResponseCode(200));
 
-        List<String> tokens = adapter.stream("질문", 1L)
+        List<String> tokens = adapter.stream("질문", 1L, 10L, null, null)
                 .collectList()
                 .block();
 
         assertThat(tokens).containsExactly("토큰");
+    }
+
+    @Test
+    @DisplayName("stream() - lat/lng가 null이면 직렬화된 JSON 요청 본문에 lat/lng 필드가 포함되지 않는다 (@JsonInclude(NON_NULL) 검증)")
+    void stream_nullLatLng_excludedFromRequestBody() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: ok\n\n")
+                .setResponseCode(200));
+
+        adapter.stream("서울 문화행사", 1L, 10L, null, null).collectList().block();
+
+        RecordedRequest recorded = mockWebServer.takeRequest();
+        String body = recorded.getBody().readUtf8();
+        JsonNode json = new ObjectMapper().readTree(body);
+
+        assertThat(json.has("lat")).isFalse();
+        assertThat(json.has("lng")).isFalse();
+        assertThat(json.get("room_id").asLong()).isEqualTo(1L);
+        assertThat(json.get("message_id").asLong()).isEqualTo(10L);
+        assertThat(json.get("message").asText()).isEqualTo("서울 문화행사");
+    }
+
+    @Test
+    @DisplayName("stream() - lat/lng가 존재하면 직렬화된 JSON 요청 본문에 lat/lng 필드가 포함된다")
+    void stream_withLatLng_includedInRequestBody() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: ok\n\n")
+                .setResponseCode(200));
+
+        adapter.stream("근처 체육시설", 2L, 20L, 37.5665, 126.9780).collectList().block();
+
+        RecordedRequest recorded = mockWebServer.takeRequest();
+        String body = recorded.getBody().readUtf8();
+        JsonNode json = new ObjectMapper().readTree(body);
+
+        assertThat(json.has("lat")).isTrue();
+        assertThat(json.has("lng")).isTrue();
+        assertThat(json.get("lat").asDouble()).isEqualTo(37.5665);
+        assertThat(json.get("lng").asDouble()).isEqualTo(126.9780);
+        assertThat(json.get("room_id").asLong()).isEqualTo(2L);
+        assertThat(json.get("message_id").asLong()).isEqualTo(20L);
+        assertThat(json.get("message").asText()).isEqualTo("근처 체육시설");
+    }
+
+    @Test
+    @DisplayName("stream() - 요청이 /chat/stream 경로로 POST 전송된다")
+    void stream_requestSentToCorrectPath() throws Exception {
+        mockWebServer.enqueue(new MockResponse()
+                .setHeader("Content-Type", "text/event-stream")
+                .setBody("data: ok\n\n")
+                .setResponseCode(200));
+
+        adapter.stream("질문", 1L, 10L, null, null).collectList().block();
+
+        RecordedRequest recorded = mockWebServer.takeRequest();
+        assertThat(recorded.getMethod()).isEqualTo("POST");
+        assertThat(recorded.getPath()).isEqualTo("/chat/stream");
+        assertThat(recorded.getHeader("Content-Type")).contains("application/json");
+        assertThat(recorded.getHeader("Accept")).contains("text/event-stream");
     }
 }
