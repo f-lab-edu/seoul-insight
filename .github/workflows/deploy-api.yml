@@ -39,12 +39,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-#      - name: Set up Docker Buildx
-#        uses: docker/setup-buildx-action@v3
-#
-#      - name: Set lower case owner name
-#        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >>${GITHUB_ENV}
-
       - name: Build and push
         id: docker_push
         uses: docker/build-push-action@v5
@@ -54,8 +48,8 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/on-seoul-api:latest
             ghcr.io/${{ github.repository_owner }}/on-seoul-api:${{ github.sha }}
-#            ghcr.io/${{ env.OWNER_LC }}/on-seoul-api:latest
-#            ghcr.io/${{ env.OWNER_LC }}/on-seoul-api:${{ github.sha }}
+            cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/on-seoul-api:cache
+            cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/on-seoul-api:cache,mode=max
 
       # Build 단계 실패 알림
       - name: Load and replace failure template (Build)
