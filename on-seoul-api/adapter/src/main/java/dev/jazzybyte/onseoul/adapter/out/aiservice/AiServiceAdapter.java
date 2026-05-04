@@ -1,5 +1,7 @@
 package dev.jazzybyte.onseoul.adapter.out.aiservice;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import dev.jazzybyte.onseoul.domain.port.out.AiServiceStreamPort;
 import dev.jazzybyte.onseoul.exception.ErrorCode;
 import dev.jazzybyte.onseoul.exception.OnSeoulApiException;
@@ -12,7 +14,6 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
-import java.util.Map;
 
 @Component
 public class AiServiceAdapter implements AiServiceStreamPort {
@@ -26,13 +27,23 @@ public class AiServiceAdapter implements AiServiceStreamPort {
         this.properties = properties;
     }
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record AiChatRequest(
+            @JsonProperty("room_id") long roomId,
+            @JsonProperty("message_id") long messageId,
+            @JsonProperty("message") String message,
+            @JsonProperty("lat") Double lat,
+            @JsonProperty("lng") Double lng
+    ) {}
+
     @Override
-    public Flux<String> stream(String question, Long roomId) {
+    public Flux<String> stream(String question, long roomId, long messageId, Double lat, Double lng) {
+        AiChatRequest body = new AiChatRequest(roomId, messageId, question, lat, lng);
         return webClient.post()
                 .uri("/chat/stream")
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.TEXT_EVENT_STREAM)
-                .bodyValue(Map.of("question", question, "room_id", roomId))
+                .bodyValue(body)
                 .retrieve()
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
                 .timeout(Duration.ofSeconds(properties.streamTimeoutSeconds()))

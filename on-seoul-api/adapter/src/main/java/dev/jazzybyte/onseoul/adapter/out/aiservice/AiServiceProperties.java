@@ -8,6 +8,6 @@ public record AiServiceProperties(
         int streamTimeoutSeconds
 ) {
     public AiServiceProperties {
-        streamTimeoutSeconds = 30;
+        if (streamTimeoutSeconds <= 0) streamTimeoutSeconds = 30;
     }
 }

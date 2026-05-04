@@ -5,6 +5,7 @@ import dev.jazzybyte.onseoul.domain.model.ChatMessageRole;
 import dev.jazzybyte.onseoul.domain.model.ChatRoom;
 import dev.jazzybyte.onseoul.domain.port.in.SendQueryCommand;
 import dev.jazzybyte.onseoul.domain.port.in.SendQueryUseCase;
+import dev.jazzybyte.onseoul.domain.port.in.SendQueryUseCase.PrepareResult;
 import dev.jazzybyte.onseoul.domain.port.out.LoadChatRoomPort;
 import dev.jazzybyte.onseoul.domain.port.out.SaveChatMessagePort;
 import dev.jazzybyte.onseoul.domain.port.out.SaveChatRoomPort;
@@ -32,17 +33,17 @@ public class SendQueryService implements SendQueryUseCase {
 
     @Override
     @Transactional
-    public Long prepare(SendQueryCommand command) {
+    public PrepareResult prepare(SendQueryCommand command) {
         ChatRoom room = resolveRoom(command);
         Long seq = saveChatMessagePort.nextSeq();
         ChatMessage userMessage = ChatMessage.create(room.getId(), seq, ChatMessageRole.USER, command.question());
         saveChatMessagePort.save(userMessage);
-        return room.getId();
+        return new PrepareResult(room.getId(), seq);
     }
 
     @Override
     @Transactional
-    public void saveAnswer(Long roomId, String answer) {
+    public void saveAnswer(long roomId, String answer) {
         Long seq = saveChatMessagePort.nextSeq();
         ChatMessage assistantMessage = ChatMessage.create(roomId, seq, ChatMessageRole.ASSISTANT, answer);
         saveChatMessagePort.save(assistantMessage);
