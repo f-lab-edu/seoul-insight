@@ -7,7 +7,6 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
-
   jpa:
     hibernate:
       ddl-auto: validate
@@ -16,7 +15,6 @@ spring:
         format_sql: true
     show-sql: false
     open-in-view: false
-
   data:
     redis:
       host: ${REDIS_HOST}
@@ -57,7 +55,7 @@ spring:
             token-uri: https://kauth.kakao.com/oauth/token
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
-    
+
 app:
   frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
   # HTTPS 환경에서는 true(기본값). 로컬 HTTP 개발 시 COOKIE_SECURE=false 로 재정의.
@@ -80,11 +78,9 @@ seoul:
     connect-timeout-ms: 10000
     response-timeout-seconds: 30
 
-
 kakao:
   api:
     key: ${KAKAO_REST_API_KEY}
-
 ai:
   service:
     url: ${AI_SERVICE_URL:http://localhost:8000}
@@ -98,3 +94,7 @@ management:
   endpoint:
     health:
       show-details: never
+
+logging:
+  level:
+    dev.jazzybyte: debug
