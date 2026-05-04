@@ -2,6 +2,7 @@ package dev.jazzybyte.onseoul.adapter.in.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.jazzybyte.onseoul.domain.port.out.TokenIssuerPort;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
@@ -52,7 +53,14 @@ public class SecurityConfig {
                         .sessionAuthenticationStrategy(new NullAuthenticatedSessionStrategy()))
                 // 인증 없이 접근이 필요한 엔드포인트만 명시적으로 `permitAll()`로 등록
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health").permitAll()
+                        // ERROR: SSE 스트리밍 중 예외 발생 시 Tomcat이 /error로 재디스패치하는데,
+                        // 이때 SecurityContext가 비어 있어 AnonymousUser로 인가 필터를 다시 통과한다.
+                        // /error를 permitAll()로 등록해도 DispatcherType이 ERROR이면 JwtAuthenticationFilter가
+                        // 재실행되어 401이 발생하므로 타입 레벨에서 차단한다.
+                        // ASYNC: DeferredResult/WebAsyncTask 등 비동기 요청에서 SecurityContext가
+                        // 전파되지 않아 불필요하게 인가가 막히는 경우를 방지한다.
+                        .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.ASYNC).permitAll()
+                        .requestMatchers("/actuator/health", "/error").permitAll()
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/oauth2/authorization/**", "/login/oauth2/code/**").permitAll()
                         .anyRequest().authenticated()
