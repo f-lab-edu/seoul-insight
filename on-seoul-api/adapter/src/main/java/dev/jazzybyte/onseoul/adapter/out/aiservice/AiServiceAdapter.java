@@ -1,7 +1,5 @@
 package dev.jazzybyte.onseoul.adapter.out.aiservice;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import dev.jazzybyte.onseoul.domain.port.out.AiServiceStreamPort;
 import dev.jazzybyte.onseoul.exception.ErrorCode;
 import dev.jazzybyte.onseoul.exception.OnSeoulApiException;
@@ -14,6 +12,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
+import java.util.concurrent.TimeoutException;
 
 @Component
 public class AiServiceAdapter implements AiServiceStreamPort {
@@ -27,15 +26,6 @@ public class AiServiceAdapter implements AiServiceStreamPort {
         this.properties = properties;
     }
 
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    record AiChatRequest(
-            @JsonProperty("room_id") long roomId,
-            @JsonProperty("message_id") long messageId,
-            @JsonProperty("message") String message,
-            @JsonProperty("lat") Double lat,
-            @JsonProperty("lng") Double lng
-    ) {}
-
     @Override
     public Flux<String> stream(String question, long roomId, long messageId, Double lat, Double lng) {
         AiChatRequest body = new AiChatRequest(roomId, messageId, question, lat, lng);
@@ -48,6 +38,9 @@ public class AiServiceAdapter implements AiServiceStreamPort {
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
                 .timeout(Duration.ofSeconds(properties.streamTimeoutSeconds()))
                 .mapNotNull(ServerSentEvent::data)
+                .onErrorMap(TimeoutException.class,
+                        e -> new OnSeoulApiException(ErrorCode.AI_SERVICE_TIMEOUT,
+                                "AI 서비스 스트림 타임아웃: " + properties.streamTimeoutSeconds() + "초 초과", e))
                 .onErrorMap(e -> !(e instanceof OnSeoulApiException),
                         e -> new OnSeoulApiException(ErrorCode.AI_SERVICE_ERROR,
                                 "AI 서비스 스트림 오류: " + e.getMessage(), e));

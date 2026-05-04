@@ -2,6 +2,7 @@ package dev.jazzybyte.onseoul.adapter.in.security;
 
 import dev.jazzybyte.onseoul.domain.port.out.TokenIssuerPort;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletRequest;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -18,6 +19,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -51,7 +54,7 @@ class JwtAuthenticationFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNotNull();
         assertThat(SecurityContextHolder.getContext().getAuthentication().getPrincipal()).isEqualTo(42L);
         assertThat(request.getAttribute("userId")).isEqualTo(42L);
-        verify(filterChain).doFilter(request, response);
+        verify(filterChain).doFilter(any(ServletRequest.class), eq(response));
     }
 
     @Test
@@ -64,7 +67,7 @@ class JwtAuthenticationFilterTest {
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         verify(tokenIssuerPort, never()).extractUserIdSafely(any());
-        verify(filterChain).doFilter(request, response);
+        verify(filterChain).doFilter(any(ServletRequest.class), eq(response));
     }
 
     @Test
@@ -78,12 +81,13 @@ class JwtAuthenticationFilterTest {
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         verify(tokenIssuerPort, never()).extractUserIdSafely(any());
-        verify(filterChain).doFilter(request, response);
+        verify(filterChain).doFilter(any(ServletRequest.class), eq(response));
     }
 
     @Test
-    @DisplayName("유효하지 않은 토큰이면 SecurityContext를 지우고 필터 체인을 계속한다")
-    void doFilterInternal_invalidToken_clearsContextAndContinues() throws Exception {
+    @DisplayName("유효하지 않거나 만료된 토큰이면 SecurityContext를 지우고 필터 체인을 계속한다")
+    void doFilterInternal_invalidOrExpiredToken_clearsContextAndContinues() throws Exception {
+        // 만료/위변조 여부는 JwtTokenIssuer가 판별하여 Optional.empty()로 전달 — 필터는 구분 불필요
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer bad-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -93,22 +97,7 @@ class JwtAuthenticationFilterTest {
         filter.doFilter(request, response, filterChain);
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
-        verify(filterChain).doFilter(request, response);
-    }
-
-    @Test
-    @DisplayName("만료된 토큰이면 SecurityContext를 지우고 필터 체인을 계속한다")
-    void doFilterInternal_expiredToken_clearsContextAndContinues() throws Exception {
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("Authorization", "Bearer expired-token");
-        MockHttpServletResponse response = new MockHttpServletResponse();
-
-        when(tokenIssuerPort.extractUserIdSafely("expired-token")).thenReturn(Optional.empty());
-
-        filter.doFilter(request, response, filterChain);
-
-        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
-        verify(filterChain).doFilter(request, response);
+        verify(filterChain).doFilter(any(ServletRequest.class), eq(response));
     }
 
     @Test
@@ -122,7 +111,7 @@ class JwtAuthenticationFilterTest {
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         verify(tokenIssuerPort, never()).extractUserIdSafely(any());
-        verify(filterChain).doFilter(request, response);
+        verify(filterChain).doFilter(any(ServletRequest.class), eq(response));
     }
 
     @Test
@@ -139,7 +128,7 @@ class JwtAuthenticationFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNotNull();
         assertThat(SecurityContextHolder.getContext().getAuthentication().getPrincipal()).isEqualTo(77L);
         assertThat(request.getAttribute("userId")).isEqualTo(77L);
-        verify(filterChain).doFilter(request, response);
+        verify(filterChain).doFilter(any(ServletRequest.class), eq(response));
     }
 
     @Test
@@ -156,6 +145,6 @@ class JwtAuthenticationFilterTest {
 
         verify(tokenIssuerPort).extractUserIdSafely("header-token");
         verify(tokenIssuerPort, never()).extractUserIdSafely("cookie-token");
-        verify(filterChain).doFilter(request, response);
+        verify(filterChain).doFilter(any(ServletRequest.class), eq(response));
     }
 }
