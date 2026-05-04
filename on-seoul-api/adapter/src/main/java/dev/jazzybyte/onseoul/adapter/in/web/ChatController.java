@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.Disposable;
 
 import java.io.IOException;
 
@@ -29,8 +30,8 @@ public class ChatController {
 
         SseEmitter emitter = new SseEmitter(120_000L);
 
-        queryAndStreamUseCase.streamAndSave(
-                        new SendQueryCommand(userId, request.roomId(), request.question()))
+        Disposable subscription = queryAndStreamUseCase.streamAndSave(
+                        new SendQueryCommand(userId, request.roomId(), request.question(), request.lat(), request.lng()))
                 .subscribe(
                         token -> {
                             try {
@@ -52,6 +53,11 @@ public class ChatController {
                         },
                         emitter::complete
                 );
+
+        // 타임아웃 시 emitter 정상 종료 + 업스트림 Flux 구독 해제
+        emitter.onTimeout(emitter::complete);
+        // emitter 완료(정상/에러/타임아웃) 시 업스트림 Flux 구독 해제 — 리소스 누수 방지
+        emitter.onCompletion(subscription::dispose);
 
         return emitter;
     }

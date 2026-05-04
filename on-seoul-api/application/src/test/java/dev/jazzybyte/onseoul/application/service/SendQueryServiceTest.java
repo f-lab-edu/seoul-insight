@@ -4,6 +4,7 @@ import dev.jazzybyte.onseoul.domain.model.ChatMessage;
 import dev.jazzybyte.onseoul.domain.model.ChatMessageRole;
 import dev.jazzybyte.onseoul.domain.model.ChatRoom;
 import dev.jazzybyte.onseoul.domain.port.in.SendQueryCommand;
+import dev.jazzybyte.onseoul.domain.port.in.SendQueryUseCase.PrepareResult;
 import dev.jazzybyte.onseoul.domain.port.out.LoadChatRoomPort;
 import dev.jazzybyte.onseoul.domain.port.out.SaveChatMessagePort;
 import dev.jazzybyte.onseoul.domain.port.out.SaveChatRoomPort;
@@ -45,20 +46,21 @@ class SendQueryServiceTest {
     }
 
     @Test
-    @DisplayName("prepare() - roomId가 null이면 새 ChatRoom을 생성하고 USER 메시지를 저장한 뒤 roomId를 반환한다")
+    @DisplayName("prepare() - roomId가 null이면 새 ChatRoom을 생성하고 USER 메시지를 저장한 뒤 PrepareResult를 반환한다")
     void prepare_newRoom_createsRoomAndSavesUserMessage() {
         Long userId = 1L;
         String question = "서울 문화행사 알려줘";
-        SendQueryCommand command = new SendQueryCommand(userId, null, question);
+        SendQueryCommand command = new SendQueryCommand(userId, null, question, null, null);
 
         ChatRoom createdRoom = savedRoom(10L);
         when(saveChatRoomPort.save(any(ChatRoom.class))).thenReturn(createdRoom);
         when(saveChatMessagePort.nextSeq()).thenReturn(1L);
         when(saveChatMessagePort.save(any(ChatMessage.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        Long roomId = service.prepare(command);
+        PrepareResult result = service.prepare(command);
 
-        assertThat(roomId).isEqualTo(10L);
+        assertThat(result.roomId()).isEqualTo(10L);
+        assertThat(result.messageId()).isEqualTo(1L);
 
         ArgumentCaptor<ChatRoom> roomCaptor = ArgumentCaptor.forClass(ChatRoom.class);
         verify(saveChatRoomPort).save(roomCaptor.capture());
@@ -76,7 +78,7 @@ class SendQueryServiceTest {
     @DisplayName("prepare() - question이 50자 초과이면 title을 50자로 잘라 저장한다")
     void prepare_longQuestion_titleTruncatedTo50Chars() {
         String longQuestion = "가".repeat(60);
-        SendQueryCommand command = new SendQueryCommand(1L, null, longQuestion);
+        SendQueryCommand command = new SendQueryCommand(1L, null, longQuestion, null, null);
 
         ChatRoom createdRoom = savedRoom(11L);
         when(saveChatRoomPort.save(any(ChatRoom.class))).thenReturn(createdRoom);
@@ -96,16 +98,17 @@ class SendQueryServiceTest {
         Long userId = 1L;
         Long existingRoomId = 5L;
         String question = "추가 질문";
-        SendQueryCommand command = new SendQueryCommand(userId, existingRoomId, question);
+        SendQueryCommand command = new SendQueryCommand(userId, existingRoomId, question, null, null);
 
         ChatRoom existingRoom = savedRoom(existingRoomId);
         when(loadChatRoomPort.findById(existingRoomId)).thenReturn(Optional.of(existingRoom));
         when(saveChatMessagePort.nextSeq()).thenReturn(2L);
         when(saveChatMessagePort.save(any(ChatMessage.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        Long roomId = service.prepare(command);
+        PrepareResult result = service.prepare(command);
 
-        assertThat(roomId).isEqualTo(existingRoomId);
+        assertThat(result.roomId()).isEqualTo(existingRoomId);
+        assertThat(result.messageId()).isEqualTo(2L);
         verify(saveChatRoomPort, never()).save(any());
 
         ArgumentCaptor<ChatMessage> msgCaptor = ArgumentCaptor.forClass(ChatMessage.class);
@@ -117,7 +120,7 @@ class SendQueryServiceTest {
     @Test
     @DisplayName("prepare() - roomId가 주어졌지만 존재하지 않으면 CHAT_ROOM_NOT_FOUND 예외를 던진다")
     void prepare_roomNotFound_throwsException() {
-        SendQueryCommand command = new SendQueryCommand(1L, 999L, "질문");
+        SendQueryCommand command = new SendQueryCommand(1L, 999L, "질문", null, null);
         when(loadChatRoomPort.findById(999L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.prepare(command))
