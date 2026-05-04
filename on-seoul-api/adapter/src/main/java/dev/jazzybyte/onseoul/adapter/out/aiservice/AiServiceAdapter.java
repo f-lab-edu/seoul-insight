@@ -12,7 +12,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
-import java.util.Map;
+import java.util.concurrent.TimeoutException;
 
 @Component
 public class AiServiceAdapter implements AiServiceStreamPort {
@@ -27,16 +27,20 @@ public class AiServiceAdapter implements AiServiceStreamPort {
     }
 
     @Override
-    public Flux<String> stream(String question, Long roomId) {
+    public Flux<String> stream(String question, long roomId, long messageId, Double lat, Double lng) {
+        AiChatRequest body = new AiChatRequest(roomId, messageId, question, lat, lng);
         return webClient.post()
                 .uri("/chat/stream")
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.TEXT_EVENT_STREAM)
-                .bodyValue(Map.of("question", question, "room_id", roomId))
+                .bodyValue(body)
                 .retrieve()
                 .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
                 .timeout(Duration.ofSeconds(properties.streamTimeoutSeconds()))
                 .mapNotNull(ServerSentEvent::data)
+                .onErrorMap(TimeoutException.class,
+                        e -> new OnSeoulApiException(ErrorCode.AI_SERVICE_TIMEOUT,
+                                "AI 서비스 스트림 타임아웃: " + properties.streamTimeoutSeconds() + "초 초과", e))
                 .onErrorMap(e -> !(e instanceof OnSeoulApiException),
                         e -> new OnSeoulApiException(ErrorCode.AI_SERVICE_ERROR,
                                 "AI 서비스 스트림 오류: " + e.getMessage(), e));

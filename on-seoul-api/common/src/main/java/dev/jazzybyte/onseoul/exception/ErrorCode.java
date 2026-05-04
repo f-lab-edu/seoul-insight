@@ -28,6 +28,7 @@ public enum ErrorCode {
 
     // ── AI 서비스 (AI_*) ───────────────────────────────────────────────────
     AI_SERVICE_ERROR(502, "AI_SERVICE_ERROR", "AI 서비스 오류가 발생했습니다."),
+    AI_SERVICE_TIMEOUT(504, "AI_SERVICE_TIMEOUT", "AI 서비스 응답 시간이 초과되었습니다."),
 
     // ── 채팅 (CHAT_*) ──────────────────────────────────────────────────────
     CHAT_ROOM_NOT_FOUND(404, "CHAT_ROOM_NOT_FOUND", "대화방을 찾을 수 없습니다."),
