@@ -48,8 +48,8 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/on-seoul-api:latest
             ghcr.io/${{ github.repository_owner }}/on-seoul-api:${{ github.sha }}
-            cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/on-seoul-api:cache
-            cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/on-seoul-api:cache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/on-seoul-api:cache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/on-seoul-api:cache,mode=max
 
       # Build 단계 실패 알림
       - name: Load and replace failure template (Build)
