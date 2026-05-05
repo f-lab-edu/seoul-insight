@@ -73,14 +73,14 @@ public class SecurityConfig {
                         .authenticationEntryPoint((request,
                                                    response,
                                                    authException) -> {
-                            log.warn("인증 실패 - URI: {}, 사유: {}", request.getRequestURI(), authException.getMessage());
+                            log.warn("[Security] 인증 실패 - URI: {}, 사유: {}", request.getRequestURI(), authException.getMessage());
                             writeErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
                                     "UNAUTHORIZED", "인증이 필요합니다.");
                         })
                         .accessDeniedHandler((request,
                                               response,
                                               accessDeniedException) -> {
-                            log.warn("인가 실패 - URI: {}, 사유: {}", request.getRequestURI(), accessDeniedException.getMessage());
+                            log.warn("[Security] 인가 실패 - URI: {}, 사유: {}", request.getRequestURI(), accessDeniedException.getMessage());
                             writeErrorResponse(response, HttpServletResponse.SC_FORBIDDEN,
                                     "FORBIDDEN", "접근 권한이 없습니다.");
 
@@ -100,7 +100,7 @@ public class SecurityConfig {
             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
             objectMapper.writeValue(response.getWriter(), Map.of("code", code, "message", message));
         } catch (Exception e) {
-            log.warn("에러 응답 작성 실패: {}", e.getMessage());
+            log.warn("[Security] 에러 응답 작성 실패: {}", e.getMessage());
         }
     }
 }
