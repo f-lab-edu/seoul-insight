@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'on-seoul-agent/**'
+      - 'docker-compose-app.yml'
+      - '.github/workflows/deploy-ai.yml'
 
 jobs:
   build:

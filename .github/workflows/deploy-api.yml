@@ -6,6 +6,7 @@ on:
     paths:
       - 'on-seoul-api/**'
       - 'docker-compose-app.yml'
+      - '.github/workflows/deploy-api.yml'
 
 jobs:
   build:
