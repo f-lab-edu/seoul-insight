@@ -59,7 +59,20 @@ app.include_router(chat.router, prefix="/chat")
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    """Pydantic 검증 오류 → 422 JSON 응답."""
+    """Pydantic 검증 오류 → 422 JSON 응답 + 요청 본문 로그."""
+    try:
+        body = await request.body()
+        body_text = body.decode("utf-8") if body else "(empty)"
+    except Exception:
+        body_text = "(읽기 실패)"
+
+    logger.warning(
+        "422 Unprocessable Content | %s %s | body: %s | errors: %s",
+        request.method,
+        request.url.path,
+        body_text,
+        exc.errors(),
+    )
     return JSONResponse(
         status_code=422,
         content={"detail": exc.errors()},

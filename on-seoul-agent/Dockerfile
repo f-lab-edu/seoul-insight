@@ -1,15 +1,16 @@
 FROM python:3.13-slim
 
-# uv 설치
+# uv 설치 — latest 대신 버전 고정 권장 (ghcr.io/astral-sh/uv:x.y.z)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
 # 의존성 파일만 먼저 복사 — 레이어 캐시 활용
-COPY pyproject.toml uv.lock* ./
+COPY pyproject.toml uv.lock ./
 
-# 빌드 시 캐시는 활용하되 런타임에는 캐시 불필요
-RUN uv sync --no-dev --no-editable
+# BuildKit 캐시 마운트로 uv 다운로드 캐시 재사용
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev --no-editable
 
 # 소스 복사
 COPY . .
@@ -20,4 +21,6 @@ RUN addgroup --system jazz \
 
 USER jazz:jazz
 
-ENTRYPOINT ["uv", "run", "--no-cache", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8000
+
+ENTRYPOINT ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
