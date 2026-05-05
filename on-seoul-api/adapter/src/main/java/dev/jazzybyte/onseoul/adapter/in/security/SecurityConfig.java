@@ -70,12 +70,21 @@ public class SecurityConfig {
                                 .authorizationRequestRepository(authorizationRequestRepository))
                         .successHandler(oauth2LoginSuccessHandler))
                 .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint((request, response, authException) ->
-                                writeErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
-                                        "UNAUTHORIZED", "인증이 필요합니다."))
-                        .accessDeniedHandler((request, response, accessDeniedException) ->
-                                writeErrorResponse(response, HttpServletResponse.SC_FORBIDDEN,
-                                        "FORBIDDEN", "접근 권한이 없습니다."))
+                        .authenticationEntryPoint((request,
+                                                   response,
+                                                   authException) -> {
+                            log.warn("인증 실패 - URI: {}, 사유: {}", request.getRequestURI(), authException.getMessage());
+                            writeErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
+                                    "UNAUTHORIZED", "인증이 필요합니다.");
+                        })
+                        .accessDeniedHandler((request,
+                                              response,
+                                              accessDeniedException) -> {
+                            log.warn("인가 실패 - URI: {}, 사유: {}", request.getRequestURI(), accessDeniedException.getMessage());
+                            writeErrorResponse(response, HttpServletResponse.SC_FORBIDDEN,
+                                    "FORBIDDEN", "접근 권한이 없습니다.");
+
+                        })
                 )
                 .addFilterBefore(new JwtAuthenticationFilter(tokenIssuerPort),
                         UsernamePasswordAuthenticationFilter.class);
