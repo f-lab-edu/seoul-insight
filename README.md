@@ -91,4 +91,4 @@
 | 교육 공공서비스 예약 | OA-2268 | [바로가기](https://data.seoul.go.kr/dataList/OA-2268/A/1/datasetView.do) |
 | 진료 공공서비스 예약 | OA-2270 | [바로가기](https://data.seoul.go.kr/dataList/OA-2270/A/1/datasetView.do) |
 
-수집은 APScheduler 기반의 주기적 스케줄링으로 처리하며, 수집된 데이터는 공통 RDB 스키마로 정규화하여 저장합니다.
+수집은 API 서비스(Spring Boot)의 스케줄러가 주기적으로 실행하며, 수집된 데이터는 공통 RDB 스키마로 정규화하여 저장합니다. 기존 데이터와 비교해 변경을 감지하고 이력으로 남깁니다.

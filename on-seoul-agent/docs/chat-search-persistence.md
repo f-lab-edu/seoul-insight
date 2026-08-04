@@ -64,14 +64,14 @@
 
 ## 3. kind · channel 매핑
 
-`kind` 는 안정적인 6종 화이트리스트, `channel` 은 Phase 진화에 따라 자유로이 확장된다.
+`kind` 는 안정적인 6종 화이트리스트이고, `channel` 은 검색 구성이 바뀔 때 자유로이 확장된다.
 
-| kind | 채널 (Phase 진화) | 의미 |
+| kind | 채널 | 의미 |
 |---|---|---|
 | `sql` | `sql` | 정형 필터 기반 조회 |
-| `vector` | `vector` (Phase 1) → `vector_a` / `vector_b` / `vector_c` (Phase 2) · `hyde_vector` (Phase 3) | pgvector 유사도 검색 |
+| `vector` | `vector_a` / `vector_b` / `vector_c` (트랙별 부분 검색), `hyde_vector`(예약, 미도입), `vector`(구 단일 경쟁) | pgvector 유사도 검색 |
 | `bm25` | `bm25` | ParadeDB 전문 검색 |
-| `rrf` | `rrf` (Phase 2+) | 다중 채널 Reciprocal Rank Fusion |
+| `rrf` | `rrf` | 다중 채널 Reciprocal Rank Fusion |
 | `map` | `map` | 좌표 + 반경 기반 지도 검색 |
 | `final` | `final` | hydration · dedup · top_k 절단 후 **실제 사용자 노출 목록** |
 
@@ -129,7 +129,7 @@ GROUP BY kind, channel
 ORDER BY kind, channel;
 ```
 
-### ③ RRF가 끌어올린 시설 (Phase 2)
+### ③ RRF가 끌어올린 시설
 
 ```sql
 -- 단일 채널에는 보이지 않았지만 RRF 병합 후 상위로 올라온 service_id.
@@ -233,13 +233,13 @@ LIMIT  50;
 
 ### 적재량 추정
 
-| Phase | 채널 수 | 메시지당 queries 행 | 메시지당 results 행 (top_k=10) |
+| 검색 구성 | 채널 수 | 메시지당 queries 행 | 메시지당 results 행 (top_k=10) |
 |---|---|---|---|
-| Phase 1 (현재) | `sql` 또는 `vector`+`bm25`+`final` 또는 `map` | 1~3 | 10~30 |
-| Phase 2 (RRF) | `vector_a/b/c` + `bm25` + `rrf` + `final` | 6 | ~60 |
-| Phase 3 (HyDE) | + `hyde_vector` | 7 | ~70 |
+| 단일 경로 (`sql` 또는 `map`) | 1~3 | 1~3 | 10~30 |
+| **4채널 RRF (현재)** — `vector_a/b/c` + `bm25` + `rrf` + `final` | 6 | 6 | ~60 |
+| HyDE 도입 시 — 위 구성 + `hyde_vector` | 7 | 7 | ~70 |
 
-일일 메시지 1만 건 가정 시 Phase 2 기준:
+일일 메시지 1만 건 가정 시 현재 구성(4채널 RRF) 기준:
 
 - `chat_search_queries`: 60K rows/day
 - `chat_search_results`: 600K rows/day
@@ -295,4 +295,4 @@ LIMIT  50;
 
 | 날짜 | 변경 | 사유 |
 |---|---|---|
-| 2026-05-20 | 초기 작성 (Task 1-6 완료) | Phase 1 search persistence 도입 |
+| 2026-05-20 | 초기 작성 | 검색 이력 적재(search persistence) 도입 |
