@@ -244,7 +244,12 @@ async def _search_vector(
         k_constant=settings.rrf_k_constant,
     )
 
-    # 운영(vector_agent)과 동일하게 RRF 최종 컷은 rrf_top_k_final 적용
+    # RRF 컷은 rrf_top_k_final 적용.
+    # 주의 — 운영과 동형이 아니다. 운영(vector_agent → pre_answer_gate)은
+    # merged[:rrf_hydrate_pool] → 구조화 게이트(area/max_class/target) → [:rrf_top_k_final]
+    # 순서다. 따라서 필터가 걸린 질의에서 이 하네스의 recall@k 는 사용자가 실제로 받는
+    # 집합과 다른 집합을 측정한다(게이트 탈락분이 다음 후보로 메워지지 않음).
+    # 하네스를 운영 순서에 맞추는 것은 별건 과제다.
     service_ids = [sid for sid, _ in merged[: settings.rrf_top_k_final]]
     hydrated = await hydrate_services(data_session, service_ids)
     return [r["service_id"] for r in hydrated]

@@ -443,8 +443,10 @@ class TestRetryPrepGroupResetPerCase:
             "payment_type": None,
             "target_audience": None,
         }
-        # 전환이 아니므로 forced_intent 는 세팅하지 않는다.
-        assert "forced_intent" not in update
+        # 전환은 아니지만 forced_intent 는 현재 intent 로 세팅한다 — 재시도 라운드의
+        # router 가 refine 캐시 HIT 로 stale filters 를 재주입해 방금 드롭한 필터를
+        # 되살리는 것을 막는다(완화 유지).
+        assert update["forced_intent"] == IntentType.VECTOR_SEARCH
 
     async def test_case_d_map_expands_radius_and_resets_only_map(self):
         """D(MAP): map={} + retry_radius_m 만, sql/vector/hydration 은 미포함(불필요)."""

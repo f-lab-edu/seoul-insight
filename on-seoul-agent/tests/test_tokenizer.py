@@ -6,6 +6,8 @@ lindera-py 바이너리 없이도 동작하도록 _lindera_tokenize 내부 함�
 
 from unittest.mock import patch
 
+import pytest
+
 
 from tools.tokenizer import DOMAIN_TOKENS, tokenize_query
 
@@ -126,3 +128,19 @@ class TestDomainTokens:
         """주요 도메인 용어가 DOMAIN_TOKENS에 등록되어 있다."""
         assert "따릉이" in DOMAIN_TOKENS
         assert "한강공원" in DOMAIN_TOKENS
+
+
+class TestDependentNounExcluded:
+    """의존명사(NNB)는 BM25 토큰에서 제외된다 — 어휘 스톱워드 대신 품사 차단.
+
+    "소개할만한" 의 "만"(NNB) 처럼 문법 잔여 토큰이 service_name lexical 매칭을
+    오염시켜 무관 항목이 BM25 상위에 오르는 것을 막는다(_BM25_STOPWORDS 는 어휘
+    목록이라 문법 잔여물을 못 거른다).
+    """
+
+    def test_dependent_noun_not_in_tokens(self):
+        pytest.importorskip("kiwipiepy")
+        tokens = tokenize_query("소개할만한 문화행사")
+        assert "만" not in tokens
+        # 내용어는 그대로 남는다.
+        assert "문화" in tokens and "행사" in tokens

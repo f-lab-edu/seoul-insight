@@ -185,6 +185,13 @@ class Settings(BaseSettings):
     #   rrf_scan_k_per_track: 트랙당 ANN 1차 스캔 깊이 (top_k보다 커 post-filter 탈락 완충).
     #   vector_track_top_k  : 트랙별 RRF 입력 깊이.
     rrf_scan_k_per_track: int = 50
+    # RRF 융합 후 hydration 대상 후보 풀 깊이. 구조화 게이트(pre_answer_gate)가
+    # 채널 누출 행을 사후 제거하므로, 절단을 게이트 뒤로 미루고 풀을 넓혀 탈락분을
+    # 다음 후보로 메운다(게이트 이전 절단 시 카드가 2~3장으로 쪼그라들던 회귀).
+    # 하류에 노출되는 최종 건수는 여전히 rrf_top_k_final 이다(게이트 통과 후 절단).
+    # 불변식: rrf_hydrate_pool >= rrf_top_k_final. env 로 뒤집으면 vector_agent 가 최종
+    # 컷보다 얕게 잘라 게이트 완충이 무의미해지고, 오류 없이 recall 만 조용히 준다.
+    rrf_hydrate_pool: int = 30
     rrf_top_k_final: int = 10
     vector_track_top_k: int = 10
 

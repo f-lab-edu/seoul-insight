@@ -286,6 +286,13 @@ class TestRetryPrepCriticHint:
         # area_name 만 드롭, service_status 는 유지.
         assert result["filters"]["area_name"] is None
         assert "service_status" not in result["filters"]
+        # 회귀 가드 — intent 전환이 없는 힌트에서도 검색·하이드 슬롯을 리셋해야 한다.
+        # 리셋을 빠뜨리면 hydration 이 평면 슬롯이라 직전 라운드 행이 이월되고,
+        # HydrationNode 재호출 안전 가드가 재hydration 을 skip 해 재검색 결과가
+        # 통째로 버려진다(완화가 관측 불가 + 무진전 가드에 확정 적중).
+        assert result["hydration"] == {}
+        assert result["vector"] == {}
+        assert result["sql"] == {}
 
     async def test_consumes_reformulate_query_hint(self):
         nodes = self._nodes()
@@ -301,6 +308,9 @@ class TestRetryPrepCriticHint:
         )
         result = await nodes.retry_prep_node(state)
         assert result["plan"]["refined_query"] == "실내 수영장"
+        # 재구성-only 힌트도 동일하게 이전 라운드 결과를 버려야 한다(상동 회귀 가드).
+        assert result["hydration"] == {}
+        assert result["vector"] == {}
 
     async def test_clears_hint_after_consumption(self):
         """critic 힌트는 1회성 — 소비 후 None 으로 클리어한다."""
@@ -351,8 +361,9 @@ class TestRetryPrepCriticHint:
             },
         )
         result = await nodes.retry_prep_node(state)
-        # 무효 intent 는 forced_intent 로 승격되지 않는다.
-        assert result.get("forced_intent") is None
+        # 무효 intent 는 forced_intent 로 승격되지 않는다(베이스의 현재 intent 유지 —
+        # 재시도는 항상 forced 분기로 router 를 통과해 완화를 지킨다).
+        assert result.get("forced_intent") == IntentType.SQL_SEARCH
         # critic 경로로 진입은 했으나(breadcrumb) 실효 힌트 없음 → 전체 리셋 폴백.
         assert "retry_prep:critic" in result["node_path"]
         assert result["filters"]["area_name"] is None

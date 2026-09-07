@@ -275,6 +275,7 @@ async def _stream(
         relaxed_filters=None,
         forced_intent=None,
         retry_radius_m=None,
+        prev_result_signature=None,
         # ── 오류/캐시 (평면) ──
         error=None,
         cache_hit=False,

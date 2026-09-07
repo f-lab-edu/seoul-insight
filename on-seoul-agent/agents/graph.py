@@ -74,6 +74,7 @@ from agents.router_agent import RouterAgent
 from agents.sql_agent import SqlAgent
 from agents.triage_agent import TriageAgent
 from agents.vector_agent import VectorAgent
+from core.config import settings
 from schemas.events import CriticDecisionEvent, DecisionEvent, SourcesUpdateEvent
 from schemas.state import AgentState
 
@@ -309,6 +310,23 @@ _StreamEvent = (
 )
 
 
+def _vector_channel_hits(rows: list[Any] | None) -> int | None:
+    """벡터 채널의 검색 깊이 — 게이트 *이전* 값을 종전 절단값으로 캡한다.
+
+    vector.results 는 구조화 게이트 탈락 완충용 후보 풀(rrf_hydrate_pool)이라 풀 확장
+    이전보다 깊다. 여기서 캡을 걸어 sources SSE 와 L1 신호 추출기(sql_hits/vector_hits/
+    total_hits)가 풀 확장 이전과 동일한 값을 받게 한다(신호 연속성).
+
+    최종 *노출* 건수가 아니다 — 게이트가 이보다 더 줄일 수 있다(캡은 상한일 뿐 게이트
+    결과를 반영하지 않는다). 실제 노출 건수는 hydration 슬롯이 단일 진실원이다. 채널별
+    보고(sql/vector/map)에 hydration 을 쓸 수 없는 이유는 hydration 이 채널 귀속이
+    사라진 병합 단일 슬롯이기 때문이다.
+    """
+    if rows is None:
+        return None
+    return min(len(rows), settings.rrf_top_k_final)
+
+
 def _build_sources(state: dict[str, Any]) -> list[dict[str, Any]]:
     """AgentState(또는 last_values dict)에서 검색 채널별 hits를 추출한다.
 
@@ -324,7 +342,7 @@ def _build_sources(state: dict[str, Any]) -> list[dict[str, Any]]:
 
     vector = (state.get("vector") or {}).get("results")
     if vector:
-        sources.append({"channel": "vector", "hits": len(vector)})
+        sources.append({"channel": "vector", "hits": _vector_channel_hits(vector)})
 
     map_res = (state.get("map") or {}).get("results")
     if map_res:
@@ -348,7 +366,8 @@ _FOLLOWUP_TURN_KINDS: frozenset[str] = frozenset({"REFINE", "DRILL", "RELEVANCE"
 def _channel_hits(result: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
     """채널별·총 결과 건수를 집계한다 — L1 규칙 라벨(ZERO_HIT/THIN/SKEW) 근거.
 
-    - sql/vector: results 리스트 길이. 채널 미실행(빈 dict / results 키 없음)이면 None.
+    - sql: results 리스트 길이. 채널 미실행(빈 dict / results 키 없음)이면 None.
+    - vector: 후보 풀 깊이가 아니라 종전 절단값으로 캡한 값(_vector_channel_hits) — 상동.
     - map: GeoJSON features 길이(features 부재 시 dict 존재를 1로 간주, _build_sources 동형).
     - analytics: results 리스트 길이.
     - total_hits: 실행된 채널의 합. 어느 채널도 안 돌면 None(0건과 구별 — 추출기가
@@ -362,7 +381,7 @@ def _channel_hits(result: dict[str, Any]) -> tuple[int | None, int | None, int |
         return len(rows) if rows is not None else None
 
     sql_hits = _list_hits("sql")
-    vector_hits = _list_hits("vector")
+    vector_hits = _vector_channel_hits((result.get("vector") or {}).get("results"))
     analytics_hits = _list_hits("analytics")
 
     map_res = (result.get("map") or {}).get("results")
@@ -421,6 +440,7 @@ def _trace_completion_metadata(result: dict[str, Any]) -> dict[str, Any]:
     turn_kind = (result.get("triage") or {}).get("turn_kind")
     forced_intent = result.get("forced_intent")
     sql_hits, vector_hits, total_hits = _channel_hits(result)
+    vector_pool = (result.get("vector") or {}).get("results")
     return {
         "intent": intent.value if intent is not None else None,
         "action": action.value if action is not None else None,
@@ -434,6 +454,12 @@ def _trace_completion_metadata(result: dict[str, Any]) -> dict[str, Any]:
         "sql_hits": sql_hits,
         "vector_hits": vector_hits,
         "total_hits": total_hits,
+        # 확장 구간(rank rrf_top_k_final+1 ~ rrf_hydrate_pool) 관측용 raw 깊이.
+        # vector_hits 는 신호 연속성을 위해 rrf_top_k_final 로 캡되므로, 후보 풀이 실제로
+        # 얼마나 깊었는지가 trace 에서 사라진다. 이 값이 없으면 "게이트 탈락분을 메우려
+        # 넓힌 구간에서 승격된 행이 카드에 실렸는가"(= BM25 저품질 오염 수용 리스크)를
+        # 사후 판정할 수단이 없다. hydrated 노출 건수와 함께 보면 게이트 탈락률이 나온다.
+        "vector_pool_depth": len(vector_pool) if vector_pool is not None else None,
         "result_quality": result.get("result_quality"),
         "forced_intent": forced_intent.value if forced_intent is not None else None,
         "applied_filter_count": _applied_filter_count(result),

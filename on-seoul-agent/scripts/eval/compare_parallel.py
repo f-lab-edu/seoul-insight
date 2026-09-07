@@ -144,7 +144,13 @@ def _fuse(
     d_rows: list[dict],
     weights: dict[str, float] | None,
 ) -> list[str]:
-    """4채널 결과를 RRF 결합해 rrf_top_k_final 컷 service_id 순위 리스트 반환."""
+    """4채널 결과를 RRF 결합해 rrf_top_k_final 컷 service_id 순위 리스트 반환.
+
+    운영과 동형이 아니다 — 운영은 merged[:rrf_hydrate_pool] → 구조화 게이트 →
+    [:rrf_top_k_final] 순서다(run_recall._search_vector 의 동일 주의사항 참조).
+    이 스크립트의 목적은 순차/병렬 경로 *동등성* 비교라 두 경로가 같은 컷을 쓰면
+    비교 자체는 유효하다.
+    """
     merged = reciprocal_rank_fusion(
         {
             "track_a": [r["service_id"] for r in a_rows],
@@ -658,6 +664,9 @@ def _build_result(
         "settings_snapshot": {
             "rrf_k_constant": settings.rrf_k_constant,
             "rrf_top_k_final": settings.rrf_top_k_final,
+            # 운영 후보 풀 깊이 — 이 스크립트는 쓰지 않지만 재현에 필요하다
+            # (운영은 이 깊이로 hydrate 후 게이트 통과분을 rrf_top_k_final 로 자른다).
+            "rrf_hydrate_pool": settings.rrf_hydrate_pool,
             "vector_track_top_k": settings.vector_track_top_k,
             "rrf_unweighted_baseline": settings.rrf_unweighted_baseline,
             "vector_default_sub_intent": settings.vector_default_sub_intent,

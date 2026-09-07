@@ -135,6 +135,7 @@ def make_agent_state(**overrides: Any) -> AgentState:
         relaxed_values=None,
         forced_intent=None,
         retry_radius_m=None,
+        prev_result_signature=None,
         error=None,
         cache_hit=False,
         answer_lock_key=None,

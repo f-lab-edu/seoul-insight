@@ -110,6 +110,7 @@ class TestVectorAgentWeightPassthrough:
             mock_settings.rrf_unweighted_baseline = True
             mock_settings.rrf_k_constant = 60
             mock_settings.rrf_top_k_final = 10
+            mock_settings.rrf_hydrate_pool = 30
             mock_settings.vector_sub_intent_enabled = False
             mock_settings.vector_default_sub_intent = "semantic"
             mock_settings.rrf_weight_profiles = {

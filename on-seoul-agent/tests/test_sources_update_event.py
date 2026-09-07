@@ -409,3 +409,20 @@ class TestSourcesUpdateSSEFrame:
         events = _parse_sse_events(response.content)
         su_events = [e for e in events if e.get("event") == "sources_update"]
         assert len(su_events) == 0
+
+
+def test_vector_sources_hits_capped_at_final_cut():
+    """vector.results 는 hydration 후보 풀이라 sources 는 최종 절단값으로 보고한다."""
+    from agents.graph import _build_sources
+    from core.config import settings
+
+    state = {
+        "vector": {
+            "results": [
+                {"service_id": f"S{i}"} for i in range(settings.rrf_hydrate_pool)
+            ]
+        }
+    }
+    assert _build_sources(state) == [
+        {"channel": "vector", "hits": settings.rrf_top_k_final}
+    ]

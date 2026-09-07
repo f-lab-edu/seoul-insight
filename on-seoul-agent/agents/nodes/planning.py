@@ -155,10 +155,22 @@ class PlanningNodes:
         VectorAgent 가 자체 refine 체인으로 대체 산출한다.
 
         forced_intent honor (triage_node 에서 이관):
-            retry_prep_node 가 방향성 재시도로 intent 를 강제하면 LLM 재분류를 skip 하고
-            그 intent 를 그대로 반환한다. forced_intent 는 즉시 None 으로 소비(1회성)하여
-            무한 전환을 막는다. refined_query/post-filter 는 채우지 않으므로 cache_check 는
-            pass-through 되고(0건이던 원 질의 오hit 방지), 전환된 경로(VECTOR)가 자체 정제한다.
+            retry_prep_node 가 intent 를 강제하면 LLM 재분류를 skip 하고 그 intent 를
+            그대로 반환한다. forced_intent 는 즉시 None 으로 소비(1회성)하여 무한 전환을
+            막는다. 전환 분기 전용이 아니다 — retry_prep_node 의 *모든* 분기가 세팅하므로
+            재시도 라운드는 항상 이 분기를 통과한다.
+
+            ★ 이 분기가 refine 캐시 조회를 건너뛰는 것은 의도이자 필수다(load-bearing).
+            refine 캐시 키는 원 message(+history) 기준이라 재시도에도 반드시 HIT 하고,
+            캐시된 filters/refined_query 가 재주입되면 retry_prep_node 가 방금 드롭한
+            필터가 되살아나 동일 검색이 반복된다(무효 재시도 루프 — 실측 3회 반복).
+            "forced 일 때도 캐시를 확인하면 되지 않나" 로 리팩터하면 그 루프가 부활한다.
+
+            plan 은 머지 채널이라 이 분기는 intent 만 덮고 refined_query/vector_sub_intent/
+            secondary_intent 는 직전 값을 보존한다. 따라서 refined_query 를 비우는 책임은
+            retry_prep_node 쪽에 있다(기존 완화 분기가 None 으로 리셋 → VectorAgent 가 자체
+            refine 체인으로 재정제). 재시도 재진입에서 cache_check 가 pass-through 되는
+            근거는 이 분기가 아니라 cache_nodes 의 answer_lock_key 가드다.
         """
         forced = state.get("forced_intent")
         if forced is not None:

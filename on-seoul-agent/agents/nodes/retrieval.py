@@ -17,6 +17,7 @@ from agents.analytics_agent import AnalyticsAgent
 from agents.nodes._shared import (
     apply_structured_gate,
     is_gap_oos,
+    result_signature,
     sanitize_user_rationale,
 )
 from agents.hydration_node import HydrationNode
@@ -107,6 +108,10 @@ class RetrievalNodes:
             channels["vector"] = vector_ids
 
         fused = reciprocal_rank_fusion(channels, k_constant=settings.rrf_k_constant)
+        # ⚠️ 이 컷은 hydration *이전*이다 — 즉 벡터 단일 경로에서 제거한 "게이트 이전
+        # 절단"이 팬아웃 경로에는 그대로 남아 있다. enable_secondary_intent 를 켜기 전에
+        # fusion 을 hydration 앞으로 옮기면서 이 컷도 rrf_hydrate_pool 로 맞춰야 한다
+        # (그러지 않으면 게이트 탈락분이 메워지지 않아 카드 빈약 회귀가 재발한다).
         merged_ids = [sid for sid, _ in fused[: settings.rrf_top_k_final]]
 
         logger.info(
@@ -123,6 +128,10 @@ class RetrievalNodes:
 
         hydration_node 직후 hydrated_services=[] 이면 answer_node를 미호출하고
         retry_prep_node로 직행하도록 엣지 로직(route_pre_answer_gate)에서 판정한다.
+
+        후보 풀 절단: 벡터 경로는 게이트 탈락을 예상해 rrf_hydrate_pool 깊이로 hydrate
+        하므로, 구조화 게이트 통과 *후* 여기서 rrf_top_k_final 로 잘라 하류(카드·외 N건·
+        trace·search_persist) 노출 건수를 종전과 동일하게 유지한다.
 
         자각 패스: RETRIEVE(hydration 결과) 경로에서만 결과 성격(쏠림·빈약)을
         경량 휴리스틱으로 점검해 answer 가 소비할 평면 슬롯 result_quality 를 산출한다.
@@ -159,12 +168,16 @@ class RetrievalNodes:
                     max_class_names=filters.get("max_class_name"),
                     target_audience=filters.get("target_audience"),
                 )
-                if len(gated) != len(rows):
-                    # 게이트가 행을 제거했을 때만 hydration 슬롯을 재기록한다. 0건이
-                    # 되면 route_pre_answer_gate 가 0건 게이트→critic/retry 로 완화
-                    # 재검색을 태운다(무한루프 없음, retry 캡).
-                    gated_hydration = {"hydrated_services": gated}
-                    rows = gated
+                if len(gated) != len(rows) or len(rows) > settings.rrf_top_k_final:
+                    # 게이트가 행을 제거했거나 후보 풀(rrf_hydrate_pool)이 최종 절단값을
+                    # 넘을 때만 hydration 슬롯을 재기록한다(불필요한 재기록 회피).
+                    # 절단은 게이트 *뒤*에 온다 — 벡터 경로는 게이트 탈락을 예상해 풀을
+                    # 넓게 hydrate 하므로, 여기서 생존분 상위 rrf_top_k_final 을 잘라야
+                    # 하류 노출 건수(카드/외 N건/trace)가 종전과 동일하게 유지된다.
+                    # 0건이 되면 route_pre_answer_gate 가 0건 게이트→critic/retry 로
+                    # 완화 재검색을 태운다(무한루프 없음, retry 캡).
+                    rows = gated[: settings.rrf_top_k_final]
+                    gated_hydration = {"hydrated_services": rows}
                 # 카드 큐레이션 — 카드형 턴에서만, result_quality *이전*에 실행한다.
                 # curated/display 산출 후 그 기준으로 품질을 점검해 정합을
                 # 맞춘다. 비카드형/0건은 큐레이션 스킵(슬롯 None 유지).
@@ -197,6 +210,16 @@ class RetrievalNodes:
                 curated_extra_count = None
                 curated_alt_count = None
 
+        # 후보 풀 절단 안전망 — 자각 패스 비대상 경로(attribute_gap/operational_detail)와
+        # 게이트 점검이 예외로 건너뛴 경우에도 hydration 슬롯이 rrf_hydrate_pool 깊이로
+        # 하류에 새지 않게 한다. 위에서 이미 재기록했으면(gated_hydration) 건드리지 않는다.
+        if gated_hydration is None:
+            pool = state["hydration"].get("hydrated_services")
+            if pool is not None and len(pool) > settings.rrf_top_k_final:
+                gated_hydration = {
+                    "hydrated_services": pool[: settings.rrf_top_k_final]
+                }
+
         detail_excerpt = await self._prepare_operational_detail(state)
         update: dict[str, Any] = {
             "result_quality": result_quality,
@@ -207,8 +230,9 @@ class RetrievalNodes:
             "detail_excerpt": detail_excerpt,
             "node_path": ["pre_answer_gate"],
         }
-        # 게이트가 행을 제거했으면 hydration 슬롯을 교정 결과로 덮어쓴다(후속 엣지·
-        # answer 가 동일 축소셋을 본다). 미제거면 슬롯을 건드리지 않는다(무변경).
+        # 게이트가 행을 제거했거나 후보 풀 절단이 걸렸으면 hydration 슬롯을 교정
+        # 결과로 덮어쓴다(후속 엣지·answer 가 동일 축소셋을 본다). 둘 다 아니면
+        # 슬롯을 건드리지 않는다(무변경).
         if gated_hydration is not None:
             update["hydration"] = gated_hydration
         return update
@@ -289,6 +313,15 @@ class RetrievalNodes:
         결정 순서(위에서부터, 먼저 매칭되는 하나):
           ⓪ 비검색 경로 → answer_node(직접 답변, 기존 동작 불변).
           ① 예산 소진(retry_count >= max_retrieval_retries) → answer_node(하드 백스톱).
+          ①-bis 무진전 가드: 재시도했는데(retry_count>0) 게이트 통과 결과가 직전 라운드와
+             동일(prev_result_signature 일치)하면 → answer_node. 완화가 실효 없었다는
+             뜻이라 critic 을 부르거나 같은 검색을 또 돌려도 결과가 바뀌지 않는다.
+             예산(①)보다 뒤, critic 판정(②)보다 앞에 둬 무효 LLM 호출을 선차단한다.
+             0건→0건(빈 시그니처)은 대상이 아니다 — critic 의 reformulate_query 가 남은
+             유일한 회복 수단이라 잘라내지 않는다(아래 truthy 검사).
+             적용 범위: 이 엣지를 거치는 hydration 경로(SQL/VECTOR/gap)만이다. MAP/
+             ANALYTICS 는 answer_node 로 직행해 이 가드를 타지 않으므로, 그 경로의 무효
+             재시도(예: 드롭할 필터가 없는 ANALYTICS no-op 완화)는 예산 캡이 끊는다.
           ② critic 활성 + critic 주입됨:
              · 의심스러움(0건/thin) → retrieval_critic_node(LLM 1회 승격).
              · 명백히 좋음(skew-만 포함) → answer_node(critic 미호출 = 80% 빠른 경로
@@ -317,6 +350,26 @@ class RetrievalNodes:
         # self_correction 과 단일 예산(max_retrieval_retries)을 공유해 이중 카운트 없음.
         if retry_count >= settings.max_retrieval_retries:
             return "answer_node"
+
+        # ①-bis 무진전 가드 — 재시도가 직전 라운드와 동일한 결과를 냈으면 더 돌리지
+        # 않는다. 시그니처는 retry_prep_node 가 라운드 끝에 적재한다.
+        #
+        # 빈 시그니처(0건)는 가드 대상이 아니다(truthy 검사로 제외): 0건→0건 은 필터가
+        # 이미 전부 드롭된 상태라 결과를 바꿀 수 있는 유일한 수단이 critic 의
+        # reformulate_query 인데, 여기서 잘라내면 그 회복 경로가 사라진다(0건 신호로
+        # critic 을 부르던 기존 동작 상실). 상한은 예산 백스톱(①)이 이미 잡고 있으므로
+        # 가드를 "결과가 있는데 그대로"인 경우로 좁혀도 무한 루프 위험은 없다.
+        if retry_count > 0:
+            prev_signature = state.get("prev_result_signature")
+            if prev_signature and prev_signature == result_signature(
+                state["hydration"].get("hydrated_services")
+            ):
+                logger.info(
+                    "gate.no_progress room=%s retry_count=%d — answer 직행",
+                    state.get("room_id"),
+                    retry_count,
+                )
+                return "answer_node"
 
         # ② escalation 게이트 — critic 활성 + 주입 시에만 승격 판정.
         # critic 미주입/비활성이면 ③ 결정적 폴백으로 내려간다(fail-open).

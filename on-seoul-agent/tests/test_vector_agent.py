@@ -559,24 +559,29 @@ class TestServiceStatusValidation:
         assert rq.service_status is None
 
 
-class TestVectorAgentRrfFinalCut:
-    """search() 최종 결과는 settings.rrf_top_k_final 로 절단된다."""
+class TestVectorAgentRrfPoolCut:
+    """search() 결과는 hydration 후보 풀(settings.rrf_hydrate_pool)로 절단된다.
 
-    async def test_results_capped_at_rrf_top_k_final(self):
-        """search 결과 수가 settings.rrf_top_k_final 이하로 제한된다."""
+    최종 rrf_top_k_final 절단은 구조화 게이트 통과 후 pre_answer_gate 가 수행한다
+    (게이트 탈락분을 다음 후보로 메우기 위한 순서다).
+    """
+
+    async def test_results_capped_at_rrf_hydrate_pool(self):
+        """search 결과 수가 settings.rrf_hydrate_pool 이하로 제한된다."""
         from core.config import settings
 
-        # rrf_top_k_final + 5개의 vector 결과를 생성하여 절단이 적용되는지 확인
+        # 후보 풀 + 5개의 vector 결과를 생성하여 절단이 적용되는지 확인
         vector_rows = [
             {"service_id": f"S{i:03d}", "service_name": f"X{i}", "similarity": 0.9}
-            for i in range(settings.rrf_top_k_final + 5)
+            for i in range(settings.rrf_hydrate_pool + 5)
         ]
         agent = _make_agent("정제됨", [0.1])
 
         with _patch_search(vector_rows, []):
             result = await agent.search(_make_state())
 
-        assert len(result["vector"]["results"]) <= settings.rrf_top_k_final
+        assert len(result["vector"]["results"]) <= settings.rrf_hydrate_pool
+        assert len(result["vector"]["results"]) > settings.rrf_top_k_final
 
 
 class TestVectorAgentMetaOnlyResults:

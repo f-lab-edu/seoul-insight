@@ -216,10 +216,16 @@ class AgentState(TypedDict):
     # filters 채널은 드롭 시 값을 None 으로 비우므로 원 요청값은 여기서만 복원 가능하다.
     # retry_prep_node 가 드롭 시점에 적재한다. 완화가 없으면 None(하위호환). 리듀서 불필요.
     relaxed_values: "dict[str, str | None] | None"
-    # 방향성 재시도: retry_prep_node 가 다음 순회의 intent 를 강제할 때 세팅(1회성).
+    # 방향성 재시도: retry_prep_node 가 다음 순회의 intent 를 강제한다(1회성, router 가
+    # 소비 즉시 None). 전환 분기 전용이 아니라 *모든* 재시도 분기가 세팅한다 — forced
+    # 분기를 타야 router 가 refine 캐시(원 message 기준이라 재시도에도 HIT)를 건너뛰어
+    # stale filters 재주입으로 직전 완화가 무효화되는 것을 막는다. plan.intent 부재 시만 None.
     forced_intent: IntentType | None
     # MAP 0건 재시도 시 확장 반경(m). 없으면 기본 반경(1000m) 적용.
     retry_radius_m: int | None
+    # 직전 라운드 게이트 통과 결과의 service_id 시그니처. 재시도가 동일 결과를 냈는지
+    # 판정해 무의미한 critic/재검색을 차단한다(무진전 가드). 리듀서 불필요.
+    prev_result_signature: str | None
     # ── L1 retrieval-critic 판단 (평면) ──
     # retrieval_critic_node 가 검색 결과를 보고 정하는 다음 행동. 세 슬롯 모두
     # None = critic 미진입(명백히 좋은 80% 경로 / critic 실패 fail-open). 스캐폴딩

@@ -135,3 +135,18 @@ def apply_structured_gate(
             continue
         kept.append(row)
     return kept
+
+
+# ---------------------------------------------------------------------------
+# 무진전(no-progress) 가드 — 재시도 결과 동일성 판정
+# ---------------------------------------------------------------------------
+
+
+def result_signature(rows: list[dict[str, Any]] | None) -> str:
+    """검색 결과(게이트+절단 통과 행)의 service_id 시그니처를 만든다.
+
+    재시도 라운드가 *같은 결과*를 냈는지 판정하는 단일 출처다. 순서까지 포함해야
+    "완화했는데 랭킹만 그대로"를 진전으로 오판하지 않는다. service_id 외 필드는 담지
+    않으므로 PII/원문 유출이 없다. 0건은 빈 문자열(초기 None 과 구분된다).
+    """
+    return ",".join(str(row.get("service_id") or "") for row in rows or [])

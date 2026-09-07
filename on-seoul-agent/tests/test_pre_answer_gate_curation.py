@@ -8,6 +8,7 @@ alt_count 를 상태에 적재하고, result_quality 를 *큐레이션된* displ
 from unittest.mock import MagicMock
 
 from agents.nodes.retrieval import RetrievalNodes
+from core.config import settings
 from schemas.state import ActionType, IntentType
 from tests.helpers import make_agent_state
 
@@ -220,3 +221,56 @@ class TestStructuredGateInPreAnswer:
         out = await nodes.pre_answer_gate_node(state)
         kept = out["hydration"]["hydrated_services"]
         assert [r["service_id"] for r in kept] == ["KID"]
+
+
+class TestHydratePoolFinalCut:
+    """확장된 RRF 후보 풀(rrf_hydrate_pool)을 게이트 통과 *후* rrf_top_k_final 로 절단.
+
+    벡터 경로는 게이트 이전 순위로 상위 10건을 잘랐기 때문에, 무필터 채널이 밀어올린
+    행이 슬롯을 먹고 게이트에서 탈락하면 카드가 2~3장으로 쪼그라들었다(빈약 → 무효
+    재시도). 후보 풀을 넓히고 절단을 게이트 뒤로 미루면 게이트 탈락분이 다음 후보로
+    채워진다. 절단값 자체는 rrf_top_k_final 로 유지해 하류(카드/extra_count)는 불변.
+    """
+
+    async def test_gate_survivors_fill_up_to_final_cut(self):
+        nodes = _make_nodes()
+        # 후보 풀 30건 중 앞 18건이 타 카테고리(게이트 탈락), 뒤 12건이 생존.
+        rows = [_row(f"DROP{i}", area="광진구", klass="체육시설") for i in range(18)]
+        rows += [_row(f"KEEP{i}", area="광진구", klass="문화체험") for i in range(12)]
+        state = make_agent_state(
+            intent=IntentType.VECTOR_SEARCH,
+            action=ActionType.RETRIEVE,
+            max_class_name=["문화체험"],
+            hydrated_services=rows,
+        )
+        out = await nodes.pre_answer_gate_node(state)
+        kept = out["hydration"]["hydrated_services"]
+        assert len(kept) == settings.rrf_top_k_final
+        assert all(r["service_id"].startswith("KEEP") for r in kept)
+        # 하류 불변: 카드 5장 + "외 N건" 은 절단값 기준(≤5).
+        assert len(out["curated_display"]) == 5
+        assert out["curated_extra_count"] == settings.rrf_top_k_final - 5
+
+    async def test_pool_truncated_even_when_gate_is_noop(self):
+        """게이트가 no-op(필터 없음)이어도 후보 풀은 최종 절단값으로 잘린다."""
+        nodes = _make_nodes()
+        rows = [_row(f"P{i}", area="광진구") for i in range(30)]
+        state = make_agent_state(
+            intent=IntentType.VECTOR_SEARCH,
+            action=ActionType.RETRIEVE,
+            hydrated_services=rows,
+        )
+        out = await nodes.pre_answer_gate_node(state)
+        assert len(out["hydration"]["hydrated_services"]) == settings.rrf_top_k_final
+
+    async def test_sql_path_within_final_cut_untouched(self):
+        """SQL 경로(TOP_K=10)는 절단이 no-op — 슬롯을 건드리지 않는다."""
+        nodes = _make_nodes()
+        rows = [_row(f"S{i}", area="광진구") for i in range(10)]
+        state = make_agent_state(
+            intent=IntentType.SQL_SEARCH,
+            action=ActionType.RETRIEVE,
+            hydrated_services=rows,
+        )
+        out = await nodes.pre_answer_gate_node(state)
+        assert "hydration" not in out

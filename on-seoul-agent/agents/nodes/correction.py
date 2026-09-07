@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from agents._helpers import emit_progress
-from agents.nodes._shared import is_gap_oos
+from agents.nodes._shared import is_gap_oos, result_signature
 from schemas.critic import ALLOWED_DROP_FILTERS
 from schemas.search import RESET_CHANNELS
 from schemas.state import ActionType, AgentState, IntentType
@@ -71,13 +71,19 @@ class CorrectionNodes:
           - 전환: _RETRY_FALLBACK_INTENT 키 intent(SQL_SEARCH 등) →
             forced_intent 세팅 + 정형 필터 전부 비움(전환 경로가 자체 정제).
           - ANALYTICS: 가장 제약 큰 effective 필터 1개만 드롭(status→area).
-            max_class_name 은 유지. 드롭할 게 없으면 no-op.
-          - MAP: retry_radius_m=3000 으로 반경 확장, map_results 리셋.
-          - 기존 완화: VECTOR_SEARCH 0건/빈 답변 등 — 필터·refined_query 리셋.
+            max_class_name 은 유지. 드롭할 게 없으면 no-op(intent 유지).
+          - MAP: retry_radius_m=3000 으로 반경 확장, map_results 리셋(intent 유지).
+          - 기존 완화: VECTOR_SEARCH 0건/빈 답변 등 — 필터·refined_query 리셋
+            (intent 유지, refined_query=None 이라 VectorAgent 가 자체 refine 으로 재정제).
 
         모든 분기는 공통 베이스(retry_count 증가 + error 클리어 + retry_relaxed=True +
-        RESET_CHANNELS)를 공유하고 분기별 override 만 더한다. retry_count 캡(최대 1회)을
-        동일하게 받으며 retry_relaxed=True 로 AnswerAgent 가 완화 사실을 답변에 명시한다.
+        RESET_CHANNELS + forced_intent)를 공유하고 분기별 override 만 더한다.
+        forced_intent 는 전환 분기 전용이 아니라 *모든* 재시도의 공통 베이스다 — 재시도
+        라운드의 router 를 forced 분기로 통과시켜야 refine 캐시 HIT 로 인한 stale filters
+        재주입(= 방금 드롭한 필터 부활 → 동일 검색 반복)을 막을 수 있다.
+
+        모든 분기가 retry_count 캡(최대 1회)을 동일하게 받으며 retry_relaxed=True 로
+        AnswerAgent 가 완화 사실을 답변에 명시한다.
         RESET_CHANNELS sentinel 로 이전 시도 채널 데이터를 지워
         UNIQUE (message_id, channel) 위반을 막는다(빈 dict({}) 는 no-op 이라 sentinel 필수).
         """
@@ -121,6 +127,21 @@ class CorrectionNodes:
             "critic_decision": None,
             "critic_replan_hint": None,
             "critic_rationale": None,
+            # 완화 유지 회귀 방지(핵심): 재시도는 *항상* forced_intent 로 router 를 통과한다.
+            # forced 분기는 {"plan": {"intent": ...}} 만 반환하므로 (a) refine 캐시 조회를
+            # 건너뛰고 (b) filters 채널을 건드리지 않는다. forced 를 안 세우면 refine 캐시
+            # 키가 원 message(+history) 기준이라 재시도에도 HIT 하고, 캐시된 stale filters
+            # 가 재주입돼 방금 드롭한 필터가 되살아난다 — 동일 검색 반복(무효 재시도 루프).
+            # 분기별로 다른 intent 가 필요하면 아래에서 override 한다(전환/attribute_gap).
+            # intent 부재(방어)면 강제할 값이 없으므로 세우지 않고 router 재분류에 맡긴다.
+            **({"forced_intent": intent} if intent is not None else {}),
+            # 무진전 가드 입력 — *이번 라운드* 결과의 시그니처를 남긴다.
+            # 다음 라운드의 route_pre_answer_gate 가 새 결과와 비교해 동일하면(완화가
+            # 실효 없었음) critic/재검색을 더 돌리지 않고 answer 로 보낸다. 모든 재시도가
+            # 이 노드를 거치므로 여기가 "직전 라운드" 기록의 단일 지점이다.
+            "prev_result_signature": result_signature(
+                state["hydration"].get("hydrated_services")
+            ),
             # answer_lock_key 는 보존한다(슬롯 미기록 = LangGraph 머지에서 무변경).
             # 락은 전 요청 수명 동안 K_original 에 유지되고, cache_write 가 저장 후 단독
             # 해제한다. 재진입 cache_check 는 이 슬롯을 보고 즉시 pass-through(재획득 안 함).
@@ -300,6 +321,18 @@ class CorrectionNodes:
             applied = True
 
         if applied:
+            # 힌트 방향과 무관하게 이전 라운드의 검색·하이드 결과를 버린다. hydration 은
+            # 리듀서 없는 평면 슬롯이라 "미기록 = 이월"이고, HydrationNode 의 재호출 안전
+            # 가드가 not-None 을 "이미 처리됨"으로 보아 재실행을 skip 한다. 따라서 리셋을
+            # intent 전환 분기에만 두면 drop_filters/reformulate_query 만 실린 힌트에서
+            # 다음 라운드가 vector 재검색(임베딩·4채널·토크나이징)을 다 돌린 뒤 그 결과를
+            # 통째로 버리고 직전 라운드 행을 그대로 재평가한다 — 완화가 원리적으로 관측될
+            # 수 없는 데드엔드이자, 무진전 가드에 확정 적중하는 경로가 된다.
+            # setdefault 이므로 위 intent 분기가 이미 세운 슬롯은 덮지 않는다.
+            update.setdefault("sql", {})
+            update.setdefault("vector", {})
+            update.setdefault("map", {})
+            update.setdefault("hydration", {})
             return update
 
         # 실효 힌트 없음 — 결정적 완화(전체 리셋)로 폴백해 무의미한 동일 재검색을 막는다.

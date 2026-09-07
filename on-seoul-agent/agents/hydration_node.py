@@ -174,11 +174,10 @@ class HydrationNode:
             # 벡터 경로 payment 필터 — metadata 에 payment_type 이 없으므로
             # hydration 직후 원본 컬럼으로 post-filter (무료=정확/유료=접두).
             #
-            # recall 주의: 이 필터는 vector_node 의 rrf_top_k_final 절단 "이후"에
-            # 적용된다. 상위 후보 대부분이 반대 결제유형이면 카드가 top_k 보다 적게
-            # 남는 recall 손실이 발생할 수 있다. 현재는 동작을 단순하게 유지하고
-            # (절단 전 넉넉히 확보 후 필터링하는 방식은 범위가 커 후속 과제로 남김),
-            # payment 필터가 결과 수를 줄일 수 있음을 명시만 한다.
+            # recall: 이 필터는 vector_node 의 rrf_hydrate_pool(후보 풀) 절단 이후,
+            # pre_answer_gate 의 최종 rrf_top_k_final 절단 이전에 적용된다. 즉 넓은
+            # 후보 풀에서 걸러내므로 반대 결제유형이 상위를 차지해도 다음 후보로
+            # 채워진다(종전 top_k 절단 직후 필터링 시 발생하던 recall 손실 해소).
             hydrated = _filter_by_payment(hydrated, payment_type)
             return {"hydration": {"hydrated_services": hydrated}}
 

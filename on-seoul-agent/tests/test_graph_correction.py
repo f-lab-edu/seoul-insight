@@ -637,3 +637,99 @@ class TestDirectedSelfCorrectionRetry:
 # ---------------------------------------------------------------------------
 # 7b. Router refined_query 산출 → state 전파 회귀
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# 7a-ter. 재시도 완화 유지 회귀 — retry 시 router 가 stale plan/filters 를 재주입 금지
+# ---------------------------------------------------------------------------
+
+
+class TestRetryKeepsRelaxation:
+    """모든 retry_prep 분기가 forced_intent 를 세팅해 router 재분류/refine 캐시를 우회한다.
+
+    refine 캐시 키는 원 message(+history) 기준이라 재시도해도 동일 키에 HIT 한다.
+    forced 분기를 타지 않으면 캐시된 stale filters 가 filters 채널에 재주입돼
+    직전 라운드의 완화(필터 드롭)가 무효화되고 동일 검색이 반복된다.
+    """
+
+    def _nodes(self) -> GraphNodes:
+        return AgentGraph(answer_agent=_answer_agent())._nodes
+
+    async def test_relaxation_branch_sets_forced_intent(self):
+        """기존 완화 분기(VECTOR 0건)도 현재 intent 로 forced_intent 를 세팅한다."""
+        nodes = self._nodes()
+        update = await nodes.retry_prep_node(
+            _state(
+                intent=IntentType.VECTOR_SEARCH,
+                max_class_name=["문화체험"],
+                vector_results=[],
+                retry_count=0,
+            )
+        )
+        assert update["forced_intent"] == IntentType.VECTOR_SEARCH
+        assert update["filters"]["max_class_name"] is None
+        # 완화 분기는 refined_query 를 비워 VectorAgent 자체 refine 을 태운다(설계 의도).
+        assert update["plan"]["refined_query"] is None
+
+    async def test_critic_hint_without_intent_sets_forced_intent(self):
+        """critic 힌트에 intent 가 없어도(필터 드롭만) forced_intent 가 세팅된다."""
+        nodes = self._nodes()
+        update = await nodes.retry_prep_node(
+            _state(
+                intent=IntentType.VECTOR_SEARCH,
+                max_class_name=["문화체험"],
+                critic_replan_hint={"drop_filters": ["max_class_name"]},
+                retry_count=0,
+            )
+        )
+        assert update["forced_intent"] == IntentType.VECTOR_SEARCH
+        assert update["filters"] == {"max_class_name": None}
+
+    async def test_analytics_and_map_branches_set_forced_intent(self):
+        nodes = self._nodes()
+        analytics = await nodes.retry_prep_node(
+            _state(
+                intent=IntentType.ANALYTICS,
+                service_status="접수중",
+                analytics_results=[],
+                retry_count=0,
+            )
+        )
+        assert analytics["forced_intent"] == IntentType.ANALYTICS
+        map_update = await nodes.retry_prep_node(
+            _state(intent=IntentType.MAP, retry_count=0)
+        )
+        assert map_update["forced_intent"] == IntentType.MAP
+        assert map_update["retry_radius_m"] == _MAP_RETRY_RADIUS_M
+
+    async def test_no_intent_leaves_forced_none(self):
+        """plan.intent 부재(방어) — 강제할 intent 가 없으면 router 재분류에 맡긴다."""
+        nodes = self._nodes()
+        update = await nodes.retry_prep_node(_state(retry_count=0))
+        assert update.get("forced_intent") is None
+
+    async def test_router_does_not_restore_dropped_filter_on_retry(self):
+        """refine 캐시 HIT 상황에서도 재시도 라운드의 router 는 filters 를 건드리지 않는다."""
+        nodes = self._nodes()
+        cached = {
+            "intent": "VECTOR_SEARCH",
+            "refined_query": "문화행사 소개",
+            "max_class_name": ["문화체험"],
+        }
+        with (
+            patch_node_sessions(),
+            patch(
+                "agents._redis_gateway.get_cached_refine_by_key",
+                AsyncMock(return_value=cached),
+            ) as mock_get,
+        ):
+            update = await nodes.router_node(
+                _state(
+                    forced_intent=IntentType.VECTOR_SEARCH,
+                    retry_count=1,
+                    relaxed_filters=["max_class_name"],
+                )
+            )
+        mock_get.assert_not_called()
+        assert "filters" not in update  # 드롭된 max_class_name 이 복원되지 않는다
+        assert update["forced_intent"] is None  # 1회성 소비

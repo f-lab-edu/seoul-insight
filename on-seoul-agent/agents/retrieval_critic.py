@@ -27,6 +27,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents._intake_indexing import neutralize_fence
 from agents.router_agent import build_context_block
+from core.config import settings
 from llm.client import get_chat_model
 from llm.prompts.critic import CRITIC_FEW_SHOT, CRITIC_SYSTEM
 from schemas.critic import CriticOutput
@@ -98,9 +99,20 @@ def build_result_summary(state: AgentState) -> str:
     모든 자유 텍스트는 neutralize_fence 로 위조 경계 마커를 무력화한다.
     """
     sql_n = _count((state.get("sql") or {}).get("results"))
-    vector_n = _count((state.get("vector") or {}).get("results"))
-    hydrated_n = _count((state.get("hydration") or {}).get("hydrated_services"))
-    total = hydrated_n or (sql_n + vector_n)
+    # vector.results 는 구조화 게이트 탈락 완충용 후보 풀(rrf_hydrate_pool, 기본 30)이라
+    # 사용자에게 노출되는 건수보다 깊다. 최종 절단값으로 캡해 보고한다 — 캡을 안 걸면
+    # critic 이 "vector 30건"을 근거로 결과가 충분하다고 오판한다(판단 경로 오염).
+    vector_n = min(
+        _count((state.get("vector") or {}).get("results")),
+        settings.rrf_top_k_final,
+    )
+    hydrated = (state.get("hydration") or {}).get("hydrated_services")
+    hydrated_n = _count(hydrated)
+    # hydration 이 실행됐으면(리스트 존재 — 빈 리스트 포함) 그 건수가 노출 건수의 단일
+    # 진실원이다. `hydrated_n or (...)` 로 쓰면 게이트가 전부 탈락시킨 0건 턴에서
+    # `0 or 30` → 30 이 되어 critic 에게 "총 30건"을 보고한다(0건인데 충분하다고 판단
+    # → 완화 재검색 소실). None(hydration 미실행)만 채널 합으로 폴백한다.
+    total = hydrated_n if hydrated is not None else (sql_n + vector_n)
 
     quality = state.get("result_quality") or {}
     thin = bool(quality.get("thin"))

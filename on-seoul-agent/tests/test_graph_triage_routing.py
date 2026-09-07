@@ -325,8 +325,9 @@ class TestRetryReentersRouterNotTriage:
     검증 방법: intake/router LLM mock 의 with_structured_output().ainvoke 호출
     횟수를 센다. 0건 → retry_prep → 재진입의 E2E 사이클에서
       - intake LLM 호출 == 1 (재시도에도 재분류 없음)
-      - router LLM 호출 == 2 (1차 + 재진입)
-    node_path 에는 router 가 2회, intake 가 1회 누적된다.
+      - router LLM 호출 == 1 (재진입은 forced_intent 분기라 재분류 skip — 재분류하면
+        refine 캐시 HIT 로 stale filters 가 재주입돼 직전 완화가 무효화된다)
+    node_path 에는 router 가 2회, intake 가 1회 누적된다(노드는 재진입, LLM 만 skip).
     """
 
     async def test_retry_reenters_router_intake_runs_once(self):
@@ -371,7 +372,9 @@ class TestRetryReentersRouterNotTriage:
         assert path.count("intake") == 1, f"intake 재실행됨: {path}"
         assert path.count("router") == 2, f"router 재진입 누락: {path}"
         assert intake_ainvoke.await_count == 1, "intake LLM 이 재시도에 재호출됨"
-        assert router_ainvoke.await_count == 2, "router LLM 이 재진입에 미호출됨"
+        assert router_ainvoke.await_count == 1, (
+            "재진입 router 가 forced 분기를 타지 않고 재분류함(완화 무효화 위험)"
+        )
 
     async def test_retry_within_recursion_limit_completes(self):
         """recursion_limit=28 경계: retry 1회 포함 최악 RETRIEVE 경로가

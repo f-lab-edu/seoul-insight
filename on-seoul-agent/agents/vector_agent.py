@@ -360,8 +360,12 @@ class VectorAgent:
             k_constant=settings.rrf_k_constant,
         )
 
-        # vector_results: 메타데이터 only — hydration 은 HydrationNode 책임
-        rrf_top = merged[: settings.rrf_top_k_final]
+        # vector_results: 메타데이터 only — hydration 은 HydrationNode 책임.
+        # 절단은 rrf_hydrate_pool(후보 풀) 로 넓게 잡는다. 최종 rrf_top_k_final 절단은
+        # pre_answer_gate 가 구조화 게이트를 통과시킨 *뒤* 수행한다 — 여기서 10 으로
+        # 자르면 무필터 채널이 밀어올린 행이 슬롯을 먹고 게이트에서 탈락해 카드가
+        # 빈약해진다(→ thin → 무효 재시도). 하류 노출 건수는 불변(게이트 후 10).
+        rrf_top = merged[: settings.rrf_hydrate_pool]
         meta_results: list[dict] = [
             {"service_id": sid, "rrf_score": score} for sid, score in rrf_top
         ]
