@@ -137,6 +137,25 @@ _EMBED_RETRY_BASE_DELAY: float = 10.0  # 첫 429 대기 시간(초), 이후 2배
 _EMBED_RETRY_MAX_DELAY: float = 60.0  # 단일 재시도 최대 대기 시간(초)
 
 
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    """429/RESOURCE_EXHAUSTED 판별 — SDK 경로별 예외 타입 차이를 흡수한다.
+
+    google-api-core 는 ResourceExhausted 를 던지지만, langchain-google-genai 가 쓰는
+    google-genai SDK 는 google.genai.errors.ClientError(429) 를 던지고 langchain 이
+    이를 GoogleGenerativeAIError 로 감싼다. 타입 검사만 하면 후자를 놓쳐 백오프가
+    전혀 동작하지 않는다 — 임베딩 백필 실측에서 429 14건 중 재시도 로그가 0건이었고
+    그대로 적재 실패로 이어졌다.
+
+    ponytail: 예외 타입을 SDK별로 import 해 늘리는 대신 code/메시지로 판별한다.
+    새 SDK 가 또 다른 래핑을 얹어도 문자열 신호는 유지된다.
+    """
+    if isinstance(exc, ResourceExhausted):
+        return True
+    if getattr(exc, "code", None) == 429:
+        return True
+    return "RESOURCE_EXHAUSTED" in str(exc)
+
+
 def _rate_limited(limiter: AsyncLimiter) -> Callable:
     """비동기 함수를 AsyncLimiter로 감싸는 데코레이터."""
 
@@ -204,7 +223,7 @@ class _GeminiEmbeddings(Embeddings):
             try:
                 return await self._aembed_once(text)
             except Exception as exc:
-                is_rate_limit = isinstance(exc, ResourceExhausted)
+                is_rate_limit = _is_rate_limit_error(exc)
                 if is_rate_limit and attempt < _EMBED_MAX_RETRIES - 1:
                     delay = random.uniform(
                         0,

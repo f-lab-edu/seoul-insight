@@ -242,7 +242,9 @@ class TestGeminiEmbeddings:
         assert call_count == 2
 
     async def test_aembed_query_raises_after_max_retries(self):
-        """최대 재시도 횟수를 초과하면 예외를 올린다."""
+        """메시지로만 식별되는 429 도 재시도를 소진한 뒤 RateLimitException 이 된다."""
+        from llm.client import _EMBED_MAX_RETRIES
+
         base = MagicMock()
         base.aembed_query = AsyncMock(
             side_effect=Exception("429 RESOURCE_EXHAUSTED: persistent")
@@ -251,9 +253,64 @@ class TestGeminiEmbeddings:
 
         with (
             patch("llm.client.asyncio.sleep", AsyncMock()),
-            pytest.raises(Exception, match="429"),
+            pytest.raises(RateLimitException, match="rate limit 소진"),
         ):
             await emb.aembed_query("test")
+
+        assert base.aembed_query.call_count == _EMBED_MAX_RETRIES
+
+    async def test_aembed_query_retries_on_genai_client_error(self):
+        """google-genai 계열 429(ResourceExhausted 타입이 아님)도 재시도한다.
+
+        회귀 방지: langchain-google-genai 는 google.genai.errors.ClientError(429) 를
+        GoogleGenerativeAIError 로 감싸 던진다. isinstance(ResourceExhausted) 검사만
+        하면 백오프 분기가 통째로 건너뛰어져, 임베딩 백필에서 429 가 재시도 없이
+        곧바로 적재 실패로 이어졌다(실측 429 14건 / 재시도 0건).
+        """
+        call_count = 0
+
+        class _GenaiClientError(Exception):
+            code = 429
+
+        async def _fail_once(text: str) -> list[float]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise _GenaiClientError("429 RESOURCE_EXHAUSTED")
+            return [0.3, 0.4]
+
+        base = MagicMock()
+        base.aembed_query = AsyncMock(side_effect=_fail_once)
+        emb = _GeminiEmbeddings(base, limiter=_FAST_LIMITER)
+
+        with patch("llm.client.asyncio.sleep", AsyncMock()):
+            result = await emb.aembed_query("test")
+
+        assert result == [0.3, 0.4]
+        assert call_count == 2
+
+    async def test_aembed_query_retries_on_message_only_429(self):
+        """code 속성 없이 메시지에만 RESOURCE_EXHAUSTED 가 있어도 재시도한다."""
+        call_count = 0
+
+        async def _fail_once(text: str) -> list[float]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception(
+                    "Error embedding content (RESOURCE_EXHAUSTED): quota exceeded"
+                )
+            return [0.5]
+
+        base = MagicMock()
+        base.aembed_query = AsyncMock(side_effect=_fail_once)
+        emb = _GeminiEmbeddings(base, limiter=_FAST_LIMITER)
+
+        with patch("llm.client.asyncio.sleep", AsyncMock()):
+            result = await emb.aembed_query("test")
+
+        assert result == [0.5]
+        assert call_count == 2
 
     async def test_aembed_query_non_429_raises_immediately(self):
         """429가 아닌 예외는 재시도 없이 즉시 올린다."""
