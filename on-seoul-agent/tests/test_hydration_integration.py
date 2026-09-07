@@ -9,7 +9,8 @@
    (hydrated_services 있으면 sql/vector_results 무시)
 """
 
-from contextlib import asynccontextmanager
+import logging
+from contextlib import asynccontextmanager, contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from agents.answer_agent import AnswerAgent
@@ -17,6 +18,7 @@ from agents.graph import AgentGraph
 from agents.nodes import CacheCheckNode, CacheWriteNode
 from agents.nodes.retrieval import RetrievalNodes
 from schemas.state import AgentState, IntentType
+from tools.hydrate_services import hydrate_services
 from tests.helpers import (
     make_agent_state,
     make_ai_session,
@@ -363,3 +365,92 @@ class TestMakeAgentStateHelperHydratedServices:
         missing = schema_keys - set(state.keys())
         assert missing == set(), f"make_agent_state 에서 누락된 키: {missing}"
         assert state["hydration"].get("hydrated_services") is None
+
+
+# ---------------------------------------------------------------------------
+# 6. hydrate_services 누락 관측 — 검색은 물었는데 원본에 없어 사라지는 건
+# ---------------------------------------------------------------------------
+
+
+class _FakeResult:
+    """SQLAlchemy Result 최소 모사 — keys()/fetchall() 만 제공."""
+
+    def __init__(self, rows: list[tuple]):
+        self._rows = rows
+
+    def keys(self):
+        return ["service_id"]
+
+    def fetchall(self):
+        return self._rows
+
+
+class _FakeDataSession:
+    """service_ids 중 present 에 있는 것만 돌려주는 가짜 on_data 세션."""
+
+    def __init__(self, present: set[str]):
+        self._present = present
+
+    async def execute(self, _sql, params):
+        return _FakeResult(
+            [(sid,) for sid in params["service_ids"] if sid in self._present]
+        )
+
+
+class _CaptureHandler(logging.Handler):
+    """hydrate_services 로거에 직접 붙이는 캡처 핸들러.
+
+    core.logging.setup_logging() 이 앱 네임스페이스 로거의 propagate 를 False 로
+    두므로 caplog(루트 핸들러)로는 잡히지 않는다. 로거에 직접 붙여 캡처한다.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.messages.append(record.getMessage())
+
+
+@contextmanager
+def _capture_hydrate_logs():
+    handler = _CaptureHandler()
+    logger = logging.getLogger("tools.hydrate_services")
+    prev_level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    try:
+        yield handler
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(prev_level)
+
+
+class TestHydrateServicesMissingIds:
+    """on_ai 검색 인덱스에는 있으나 on_data 원본에 없는 id 처리."""
+
+    async def test_missing_ids_are_dropped_and_logged(self):
+        """일부 누락 — 있는 것만 반환하고 누락 건수를 WARNING 으로 남긴다."""
+        session = _FakeDataSession({"A"})
+        with _capture_hydrate_logs() as logs:
+            rows = await hydrate_services(session, ["A", "B", "C"])
+        assert [r["service_id"] for r in rows] == ["A"]
+        text = "\n".join(logs.messages)
+        assert "hydration 누락 2/3건" in text
+        assert "B" in text and "C" in text
+
+    async def test_all_missing_logs_before_empty_result(self):
+        """전량 누락 — 사용자에게는 검색 0건으로 보이므로 로그가 유일한 단서다."""
+        session = _FakeDataSession(set())
+        with _capture_hydrate_logs() as logs:
+            rows = await hydrate_services(session, ["X"])
+        assert rows == []
+        assert "hydration 누락 1/1건" in "\n".join(logs.messages)
+
+    async def test_no_log_when_all_present(self):
+        """누락이 없으면 경고를 남기지 않는다."""
+        session = _FakeDataSession({"A", "B"})
+        with _capture_hydrate_logs() as logs:
+            rows = await hydrate_services(session, ["A", "B"])
+        assert len(rows) == 2
+        assert logs.messages == []
