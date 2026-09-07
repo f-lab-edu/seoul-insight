@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 from agents.router_agent import RouterAgent, _IntentOutput
 from agents.vector_agent import _REFINE_SYSTEM
 from llm.prompts.router import (
+    PLACE_ALIASES,
     ROUTER_FEW_SHOT_EXAMPLES,
     ROUTER_SYSTEM,
 )
@@ -161,3 +162,32 @@ class TestClassifyBehavior:
             agent = _make_agent(_IntentOutput(intent=IntentType.ANALYTICS))
             result = await agent.classify(msg)
             assert result.intent == IntentType.ANALYTICS
+
+
+class TestPlaceAliasExpansion:
+    """통용 지명 약칭(DMC 등) → 자치구 + 코퍼스 표기 확장 가드.
+
+    PLACE_ALIASES 표가 프롬프트에 렌더링되는지, 표에 없는 지명의 처리 규칙과
+    자치구 불확실 시 필터 생략 규칙이 남아 있는지 문자열 수준으로 검증한다.
+    """
+
+    def test_alias_table_rendered_into_prompt(self):
+        """표의 모든 항목이 프롬프트에 렌더링된다(표만 늘려도 프롬프트가 따라옴)."""
+        for alias, (area, term) in PLACE_ALIASES.items():
+            assert f'"{alias}" → area_name=["{area}"]' in ROUTER_SYSTEM
+            assert f'지명 표기="{term}"' in ROUTER_SYSTEM
+
+    def test_unlisted_alias_rule_present(self):
+        """표에 없는 지명도 자치구+한글 지명으로 확장하라는 규칙이 있다."""
+        assert "표에 없는 통용 지명" in ROUTER_SYSTEM
+
+    def test_uncertain_area_is_not_filtered(self):
+        """자치구가 불확실하면 area_name 을 비우라는 가드(오필터로 정답 배제 방지)."""
+        assert "확신이 없는 경우 area_name 은 null" in ROUTER_SYSTEM
+
+    def test_fewshot_has_dmc_example(self):
+        """DMC few-shot 이 마포구 + 상암으로 확장된다."""
+        ex = next(e for e in ROUTER_FEW_SHOT_EXAMPLES if e["message"].startswith("DMC"))
+        assert '"area_name": ["마포구"]' in ex["output"]
+        assert "상암" in ex["output"]
+        assert "DMC" not in ex["output"].split('"refined_query":')[1]

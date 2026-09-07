@@ -10,7 +10,38 @@ DB enum 값과 완전히 일치하는 한정된 화이트리스트이므로, 사
 
 from langchain_core.prompts import ChatPromptTemplate, FewShotChatMessagePromptTemplate
 
-ROUTER_SYSTEM = """\
+# 통용 지명,약칭 → (자치구, 코퍼스 표기 지명) 매핑 — 확장 지점.
+#
+# "DMC" 처럼 public_service_reservations 에 등장하지 않는 약칭,역명을 그대로 검색어로
+# 두면 벡터,BM25 가 모두 0건이 된다. 라우터가 자치구 필터 + 코퍼스 표기로 바꿔 넣도록
+# 아래 표를 프롬프트에 주입한다.
+#
+# 새 지명 추가는 이 표에 한 줄만 넣으면 된다(프롬프트 문구는 건드리지 않는다).
+# 값의 두 번째 항목은 *데이터에 실제로 쓰이는 표기*여야 하므로, 추가 전에 확인한다:
+#   SELECT DISTINCT place_name, area_name FROM public_service_reservations
+#    WHERE place_name ILIKE '%상암%' OR service_name ILIKE '%상암%';
+# 표에 없는 지명은 아래 프롬프트 규칙이 LLM 상식으로 처리한다(자치구 불확실 시 필터 생략).
+#
+# ponytail: dict 를 프롬프트로 렌더링하는 것으로 충분하다. 30줄을 넘거나 지명 하나에
+# 표기가 여러 개 필요해지면 그때 별도 모듈,테이블로 분리한다.
+PLACE_ALIASES: dict[str, tuple[str, str]] = {
+    "DMC": ("마포구", "상암"),
+    "디지털미디어시티": ("마포구", "상암"),
+    "디지털미디어시티역": ("마포구", "상암"),
+}
+
+
+def _render_place_aliases(aliases: dict[str, tuple[str, str]]) -> str:
+    """별칭 표를 프롬프트 라인으로 렌더링한다."""
+    return "\n".join(
+        f'  "{alias}" → area_name=["{area}"], refined_query 지명 표기="{term}"'
+        for alias, (area, term) in aliases.items()
+    )
+
+
+_PLACE_ALIAS_BLOCK = _render_place_aliases(PLACE_ALIASES)
+
+ROUTER_SYSTEM = f"""\
 당신은 서울시 공공서비스 예약 챗봇의 라우터입니다.
 사용자 메시지를 읽고 의도를 분류하고 검색 파라미터를 추출하세요.
 
@@ -109,6 +140,17 @@ LLM은 아래 순서로 reasoning을 먼저 채운 뒤 나머지 필드를 산�
 **항상 배열로 반환한다**: 단일 지역이면 ["강남구"], 여러 지역이면 모두 담는다
 (예: "성동구나 광진구" → ["성동구","광진구"], "강남 또는 서초" → ["강남구","서초구"]).
 서울 외 지역이거나 자치구가 아니면 해당 항목을 제외하고, 유효 지역이 없으면 null.
+
+### 통용 지명,약칭 — 자치구명이 아닌 지명
+
+아래 표에 있는 표현이 나온 경우, area_name 에 표의 자치구를 넣고 refined_query 에는
+약칭 대신 표의 지명 표기를 쓰세요.
+{_PLACE_ALIAS_BLOCK}
+
+표에 없는 통용 지명,역명,영문 약어("성수", "이태원", "OO역" 등)가 나온 경우, 그 지역이
+속한 자치구를 area_name 에 넣고 refined_query 에는 데이터에 실제로 쓰일 한글 지명으로
+바꿔 쓰세요. 어느 자치구인지 확신이 없는 경우 area_name 은 null 로 두고 refined_query 의
+지명 표기만 확장하세요 — 틀린 자치구 필터는 정답을 배제합니다.
 
 ## service_status (5종, 정확한 enum 값만 허용)
 
@@ -415,6 +457,22 @@ ROUTER_FEW_SHOT_EXAMPLES = [
             ' "max_class_name": ["문화체험", "공간시설", "교육강좌", "진료복지"],'
             ' "area_name": null, "service_status": null, "payment_type": null,'
             ' "target_audience": null, "vector_sub_intent": null}'
+        ),
+    },
+    {
+        # 19. 통용 지명 약칭 — "DMC"는 코퍼스에 없는 표기라 그대로 검색하면 0건.
+        #     자치구(마포구) 필터 + 코퍼스 표기("상암")로 바꿔 넣는다.
+        "message": "DMC 에 현재 행사 어떤거 있어?",
+        "output": (
+            '{"reasoning": "\'DMC\'는 상암 디지털미디어시티의 약칭이므로 area_name=마포구로'
+            " 정규화하고, refined_query 에는 데이터 표기인 '상암'을 쓴다(약칭 원문을 그대로"
+            " 두면 0건). '현재 행사'는 service_status='접수중' + max_class_name='문화체험'.\","
+            ' "intent": "SQL_SEARCH",'
+            ' "refined_query": "마포구 상암 접수중 문화체험",'
+            ' "max_class_name": ["문화체험"], "area_name": ["마포구"],'
+            ' "service_status": "접수중", "payment_type": null,'
+            ' "target_audience": null, "vector_sub_intent": null,'
+            ' "secondary_intent": "VECTOR_SEARCH"}'
         ),
     },
 ]
